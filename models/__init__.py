@@ -11,15 +11,15 @@ from .vae_full import VAE_full
 from .vae_diag import VAE_diag
 from .vae_single import VAE_single
 from .vae_student import VAE_student
-from .vae_cluster import VAE_cluster
+from .vae_rbf import VAE_rbf
 
 #%%
 def get_model(model_name):
-    models = {'vae': VAE_full,
-              'vitae_ci': VAE_diag,
-              'vitae_ui': VAE_single,
+    models = {'vae_full': VAE_full,
+              'vae_diag': VAE_diag,
+              'vae_single': VAE_single,
               'vae_student': VAE_student,
-              'vae_cluster': VAE_cluster
+              'vae_rbf': VAE_rbf
               }
     assert (model_name in models), 'Model not found, choose between: ' \
             + ', '.join([k for k in models.keys()])

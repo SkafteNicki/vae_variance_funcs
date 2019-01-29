@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tue Jan 29 10:24:43 2019
+Created on Tue Jan 29 10:25:16 2019
 
 @author: nsde
 """
@@ -12,18 +12,16 @@ from torch import nn
 from torch import distributions as D
 
 #%%
-class singleVar(nn.Module):
-    def __init__(self):
-        super(singleVar, self).__init__()
-        self.var = nn.Parameter(torch.tensor(0.0004, requires_grad=True))
-    
-    def forward(self, z):
-        return self.var
+def dist(X, Y): # X: N x d , Y: M x d
+    dist =  X.norm(p=2, dim=1, keepdim=True)**2 + \
+            Y.norm(p=2, dim=1, keepdim=False)**2 - \
+            2*torch.mm(X, Y.t())
+    return dist # N x M
 
 #%%
-class VAE_single(nn.Module):
+class VAE_rbf(nn.Module):
     def __init__(self, ):
-        super(VAE_single, self).__init__()
+        super(VAE_rbf, self).__init__()
         self.enc_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
                                     nn.Linear(100, 2))
@@ -34,19 +32,21 @@ class VAE_single(nn.Module):
         self.dec_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
                                     nn.Linear(100, 2))
-        self.dec_var = nn.Sequential(singleVar(),
-                                     nn.Softplus())
+        self.C = nn.Parameter(torch.randn(30, 2), requires_grad=True)
+        self.W = nn.Parameter(torch.rand(30,2), requires_grad=True)
+        self.lamb = 1 # we cannot train this
         
     def forward(self, x, beta=1.0, switch=1.0):
         # Encoder step
         z_mu, z_var = self.enc_mu(x), self.enc_var(x)
-        q_dist = D.Independent(D.Normal(z_mu, z_var.sqrt()), 1)
+        q_dist = D.Independent(D.Normal(z_mu, z_var), 1)
         z = q_dist.rsample()
         
         # Decoder step
-        x_mu, x_var = self.dec_mu(z), self.dec_var(z)
-        x_var = switch*x_var + (1-switch)*torch.tensor(0.02)**2 
-        p_dist = D.Independent(D.Normal(x_mu, x_var.sqrt()), 1)
+        x_mu = self.dec_mu(z)
+        inv_var = torch.mm(torch.exp(-self.lamb * dist(z, self.C)), torch.clamp(self.W, min=0.0)) + 1e-10
+        x_var = switch * (1/inv_var) + (1-switch)*torch.tensor(0.02)**2
+        p_dist = D.Independent(D.Normal(x_mu, x_var), 1) 
         
         # Calculate loss
         prior = D.Independent(D.Normal(torch.zeros_like(z),
