@@ -33,15 +33,21 @@ class VAE_student(nn.Module):
                                     nn.ReLU(),
                                     nn.Linear(100, 2),
                                     nn.Softplus())
-        
+
+    def encoder(self, x):
+        return self.enc_mu(x), self.enc_std(x)        
+    
+    def decoder(self, z, switch=1.0):
+        return self.dec_mu(z), self.dec_df(z), self.dec_scale(z)
+
     def forward(self, x, beta=1.0, switch=1.0):
         # Encoder step
-        z_mu, z_std = self.enc_mu(x), self.enc_std(x)
+        z_mu, z_std = self.encoder(x)
         q_dist = D.Independent(D.Normal(z_mu, z_std.sqrt()), 1)
         z = q_dist.rsample()
         
         # Decoder step
-        x_mu, x_df, x_scale = self.dec_mu(z), self.dec_df(z), self.dec_scale(z)
+        x_mu, x_df, x_scale = self.decoder(z, switch)
         p_dist = D.Independent(D.StudentT(x_df, x_mu, x_scale), 1)
         
         # Calculate loss
@@ -51,4 +57,4 @@ class VAE_student(nn.Module):
         kl = q_dist.log_prob(z) - prior.log_prob(z)
         elbo = (log_px - beta*kl).mean()
         
-        return elbo, x_mu, x_scale, z, z_mu, z_std
+        return elbo, log_px.mean(), kl.mean(), x_mu, x_scale, z, z_mu, z_std

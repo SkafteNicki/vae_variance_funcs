@@ -43,7 +43,7 @@ class VAE_rbf(nn.Module):
     def decoder(self, z, switch=1.0):
         x_mu = self.dec_mu(z)
         inv_std = torch.mm(torch.exp(-self.lamb * dist(z, self.C)), F.softplus(self.W)) + 1e-10
-        x_std = switch * (1.0/inv_std) + (1-switch)*torch.tensor(0.02)
+        x_std = switch * (1.0/inv_std) + (1-switch)*torch.tensor(0.02**2)
         return x_mu, x_std
     
     def forward(self, x, beta=1.0, switch=1.0):
@@ -62,4 +62,4 @@ class VAE_rbf(nn.Module):
         log_px = p_dist.log_prob(x)
         kl = q_dist.log_prob(z) - prior.log_prob(z)
         elbo = (log_px - beta*kl).mean()
-        return elbo, x_mu, x_std, z, z_mu, z_std
+        return elbo, log_px.mean(), kl.mean(), x_mu, x_std, z, z_mu, z_std

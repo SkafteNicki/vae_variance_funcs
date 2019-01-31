@@ -21,9 +21,10 @@ def argparser():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # Model settings
     ms = parser.add_argument_group('Model settings')
-    ms.add_argument('--model', type=str, default='vae_rbf', help='model to train')
+    ms.add_argument('--model', type=str, default='vae_student', help='model to train')
     ms.add_argument('--beta', type=float, default=1.0, help='weighting of KL term')
     ms.add_argument('--switch', type=lambda x: (str(x).lower() == 'true'), default=True, help='use switch for variance')
+    ms.add_argument('--anneling', type=lambda x: (str(x).lower() == 'true'), default=True, help='use anneling for kl term')
     # Training settings
     ts = parser.add_argument_group('Training settings')
     ts.add_argument('--n_epochs', type=int, default=3000, help='number of epochs of training')
@@ -68,14 +69,16 @@ if __name__ == '__main__':
     # Optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     
+    # For plotting
     fig, ax = plt.subplots(2, 3)
+    plt.subplots_adjust(hspace=0.3, wspace=0.3)
     ax[0,0].plot(X[:args.n,0].numpy(), X[:args.n,1].numpy(), 'r.')
     ax[0,0].plot(X[args.n:,0].numpy(), X[args.n:,1].numpy(), 'b.')
     ax[0,0].set_xlim(-2,2)
     ax[0,0].set_ylim(-2,2)
     ax[0,0].set_title('Training data')
     line, = ax[1,0].semilogy([ ], 'b-')
-    ax[0,1].set_title('Negative ELBO')
+    ax[1,0].set_title('Negative ELBO')
     scat1, = ax[0,1].plot([ ], [ ], 'r.')
     scat2, = ax[0,1].plot([ ], [ ], 'b.')
     ax[0,1].set_title('Reconstruction')
@@ -90,8 +93,8 @@ if __name__ == '__main__':
     
     losslist = [ ]
     n_batch = int(np.ceil(X.shape[0] // args.batch_size))
-    for e in range(args.n_epochs):
-        loss = 0
+    for e in range(1, args.n_epochs+1):
+        loss, loss_recon, loss_kl = 0, 0, 0
         for i in range(n_batch):
             optimizer.zero_grad()
             
@@ -100,18 +103,27 @@ if __name__ == '__main__':
                 switch = 1.0 if args.n_epochs/2 < e else 0.0 
             else:
                 switch = 1.0
-            beta = args.beta*float(np.minimum(1, e/args.warmup))
-            
+            if args.anneling:
+                beta = args.beta*float(np.minimum(1, e/args.warmup))
+            else:
+                beta = args.beta
+
             # Forward pass
             x = X[i*args.batch_size:(i+1)*args.batch_size].to(device)
-            elbo, x_mu, x_var, z, z_mu, z_var = model(x, beta, switch)
+            elbo, recon, kl, x_mu, x_std, z, z_mu, z_std = model(x, beta, switch)
             
             # Backward pass
             (-elbo).backward() # maximize elbo <-> minimize -elbo
             optimizer.step()
-            print('Epoch: ', e, '/', args.n_epochs, ', elbo:', elbo.item(),
-                    ', mean x_var:', x_var.mean().item())
+            
+            # Save
             loss += -elbo.item()
+            loss_recon += recon.item()
+            loss_kl += kl.item()
+            
+        # Print progress
+        print('Epoch: {0}/{1}, ELBO: {2:.3f}, Recon: {3:.3f}, KL: {3:.3f})'.format(
+                e, args.n_epochs, loss, loss_recon, loss_kl))
         losslist.append(loss)
         
         if e % 50 == 0:
@@ -137,31 +149,40 @@ if __name__ == '__main__':
                 grid = np.stack([array.flatten() for array in np.meshgrid(
                         np.linspace(-2, 2, 100),
                         np.linspace(-2, 2, 100))]).T
-                _, _, _, _, _, z_var = model(torch.tensor(grid).to(torch.float32).to(device), 
-                                             beta, switch)
-                z_var = z_var.cpu().numpy()
+                _, z_std = model.encoder(torch.tensor(grid).to(torch.float32).to(device))
+                z_std = z_std.cpu().numpy()
                 for coll in cont1.collections: ax[0,2].collections.remove(coll)
                 cont1 = ax[0,2].contourf(grid[:,0].reshape(100, 100),
                                          grid[:,1].reshape(100, 100),
-                                         np.log(z_var.sum(axis=1)).reshape(100, 100))
+                                         np.log(z_std.sum(axis=1)).reshape(100, 100))
                 
-                if args.model != 'vae_single':
-                    # Decoder variance
-                    grid = np.stack([array.flatten() for array in np.meshgrid(
-                            np.linspace(-5, 5, 100),
-                            np.linspace(-5, 5, 100))]).T
+                # Decoder variance
+                grid = np.stack([array.flatten() for array in np.meshgrid(
+                        np.linspace(-5, 5, 100),
+                        np.linspace(-5, 5, 100))]).T
+                if args.model != 'vae_student':
                     _, x_std = model.decoder(torch.tensor(grid).to(torch.float32).to(device), 
                                              switch)
-                    x_std = x_std.cpu().numpy()
-                    for coll in cont2.collections: ax[1,2].collections.remove(coll)
-                    cont2 = ax[1,2].contourf(grid[:,0].reshape(100, 100),
-                                             grid[:,1].reshape(100, 100),
-                                             np.log(x_std.sum(axis=1)).reshape(100, 100))
                 else:
-                    print('x_var:', x_var)
-                if args.model == 'vae_rbf':
+                    _, x_df, x_scale = model.decoder(torch.tensor(grid).to(torch.float32).to(device), 
+                                             switch)
+                    x_std = x_df / (x_df - 2) * x_scale
+                
+                x_std = x_std.cpu().numpy()
+                for coll in cont2.collections: ax[1,2].collections.remove(coll)
+                cont2 = ax[1,2].contourf(grid[:,0].reshape(100, 100),
+                                         grid[:,1].reshape(100, 100),
+                                         np.log(x_std.sum(axis=1)).reshape(100, 100))
+                
+                if args.model == 'vae_rbf': # plot clusters
                     scat5.set_data(model.C[:,0].detach().cpu(), model.C[:,1].detach().cpu())
-                    
+                
+                if e == args.n_epochs: # put colorbars on plot in the end
+                    plt.colorbar(cont1, ax=ax[0,2])
+                    plt.colorbar(cont2, ax=ax[1,2])
+                
                 # Draw
                 plt.draw()
                 plt.pause(0.01)
+                
+    plt.savefig(str(args.model) + '.pdf')

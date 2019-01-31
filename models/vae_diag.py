@@ -29,16 +29,23 @@ class VAE_diag(nn.Module):
                                      nn.ReLU(),
                                      nn.Linear(100, 1),
                                      nn.Softplus())
+    
+    def encoder(self, x):
+        return self.enc_mu(x), self.enc_std(x)
         
+    def decoder(self, z, switch=1.0):
+        x_mu, x_std = self.dec_mu(z), self.dec_std(z)
+        x_std = switch*x_std + (1-switch)*torch.tensor(0.02**2)
+        return x_mu, x_std
+    
     def forward(self, x, beta=1.0, switch=1.0):
         # Encoder step
-        z_mu, z_std = self.enc_mu(x), self.enc_std(x)
+        z_mu, z_std = self.encoder(x)
         q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
         z = q_dist.rsample()
         
         # Decoder step
-        x_mu, x_std = self.dec_mu(z), self.dec_std(z)
-        x_std = switch*x_std + (1-switch)*torch.tensor(0.02)
+        x_mu, x_std = self.decoder(z, switch)
         p_dist = D.Independent(D.Normal(x_mu, x_std), 1)
         
         # Calculate loss
@@ -48,4 +55,4 @@ class VAE_diag(nn.Module):
         kl = q_dist.log_prob(z) - prior.log_prob(z)
         elbo = (log_px - beta*kl).mean()
         
-        return elbo, x_mu, x_std, z, z_mu, z_std
+        return elbo, log_px.mean(), kl.mean(), x_mu, x_std, z, z_mu, z_std
