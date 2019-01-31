@@ -70,7 +70,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     
     # For plotting
-    fig, ax = plt.subplots(2, 3)
+    fig, ax = plt.subplots(3, 3)
     plt.subplots_adjust(hspace=0.3, wspace=0.3)
     ax[0,0].plot(X[:args.n,0].numpy(), X[:args.n,1].numpy(), 'r.')
     ax[0,0].plot(X[args.n:,0].numpy(), X[args.n:,1].numpy(), 'b.')
@@ -90,8 +90,14 @@ if __name__ == '__main__':
     ax[0,2].set_title('Encoder variance')
     cont2 = ax[1,2].contourf(np.zeros((2,2)), np.zeros((2,2)), np.zeros((2,2)))
     ax[1,2].set_title('Decoder variance')
+    line2, = ax[2,0].plot([ ], 'b-')
+    ax[2,0].set_title('Reconstruction')
+    line3, = ax[2,1].plot([ ], 'b-')
+    ax[2,1].set_title('KL')
+    line4, = ax[2,2].semilogy([ ], 'b-')
+    ax[2,2].set_title('Mean decoder std estimate')
     
-    losslist = [ ]
+    losslist, losslist2, losslist3, mean_std = [ ], [ ], [ ], [ ]
     n_batch = int(np.ceil(X.shape[0] // args.batch_size))
     for e in range(1, args.n_epochs+1):
         loss, loss_recon, loss_kl = 0, 0, 0
@@ -125,6 +131,9 @@ if __name__ == '__main__':
         print('Epoch: {0}/{1}, ELBO: {2:.3f}, Recon: {3:.3f}, KL: {3:.3f})'.format(
                 e, args.n_epochs, loss, loss_recon, loss_kl))
         losslist.append(loss)
+        losslist2.append(loss_recon)
+        losslist3.append(loss_kl)
+        mean_std.append(x_std.mean().item())
         
         if e % 50 == 0:
             with torch.no_grad():
@@ -132,6 +141,9 @@ if __name__ == '__main__':
                 z = z.detach().cpu()
                 # Loss 
                 ax[1,0].semilogy(losslist, 'b-')
+                ax[2,0].plot(losslist2, 'b-')
+                ax[2,1].plot(losslist3, 'b-')
+                ax[2,2].semilogy(mean_std, 'b-')
                 
                 # Reconstruction
                 scat1.set_data(x_mu[:args.n,0], x_mu[:args.n,1])
@@ -174,7 +186,7 @@ if __name__ == '__main__':
                                          grid[:,1].reshape(100, 100),
                                          np.log(x_std.sum(axis=1)).reshape(100, 100))
                 
-                if args.model == 'vae_rbf': # plot clusters
+                if hasattr(model, 'C'): # plot clusters
                     scat5.set_data(model.C[:,0].detach().cpu(), model.C[:,1].detach().cpu())
                 
                 if e == args.n_epochs: # put colorbars on plot in the end
@@ -184,5 +196,7 @@ if __name__ == '__main__':
                 # Draw
                 plt.draw()
                 plt.pause(0.01)
+    
+    model.final()
                 
     plt.savefig(str(args.model) + '.pdf')
