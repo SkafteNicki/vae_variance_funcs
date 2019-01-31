@@ -109,7 +109,8 @@ if __name__ == '__main__':
             # Backward pass
             (-elbo).backward() # maximize elbo <-> minimize -elbo
             optimizer.step()
-            print('Epoch: ', e, '/', args.n_epochs, ', elbo:', elbo.item())
+            print('Epoch: ', e, '/', args.n_epochs, ', elbo:', elbo.item(),
+                    ', mean x_var:', x_var.mean().item())
             loss += -elbo.item()
         losslist.append(loss)
         
@@ -149,13 +150,13 @@ if __name__ == '__main__':
                     grid = np.stack([array.flatten() for array in np.meshgrid(
                             np.linspace(-5, 5, 100),
                             np.linspace(-5, 5, 100))]).T
-                    _, _, x_var, _, _, _ = model(torch.tensor(grid).to(torch.float32).to(device), 
-                                                 beta, switch)
-                    x_var = x_var.cpu().numpy()
+                    _, x_std = model.decoder(torch.tensor(grid).to(torch.float32).to(device), 
+                                             switch)
+                    x_std = x_std.cpu().numpy()
                     for coll in cont2.collections: ax[1,2].collections.remove(coll)
                     cont2 = ax[1,2].contourf(grid[:,0].reshape(100, 100),
                                              grid[:,1].reshape(100, 100),
-                                             np.log(x_var.sum(axis=1)).reshape(100, 100))
+                                             np.log(x_std.sum(axis=1)).reshape(100, 100))
                 else:
                     print('x_var:', x_var)
                 if args.model == 'vae_rbf':

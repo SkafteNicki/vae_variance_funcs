@@ -1,7 +1,6 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tue Jan 29 10:24:54 2019
+Created on Wed Jan 30 10:59:10 2019
 
 @author: nsde
 """
@@ -9,12 +8,13 @@ Created on Tue Jan 29 10:24:54 2019
 #%%
 import torch
 from torch import nn
+from torch.nn import functional as F
 from torch import distributions as D
 
 #%%
-class VAE_student(nn.Module):
+class VAE_experimental(nn.Module):
     def __init__(self, ):
-        super(VAE_student, self).__init__()
+        super(VAE_experimental, self).__init__()
         self.enc_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
                                     nn.Linear(100, 2))
@@ -25,24 +25,22 @@ class VAE_student(nn.Module):
         self.dec_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
                                     nn.Linear(100, 2))
-        self.dec_df = nn.Sequential(nn.Linear(2, 100),
-                                    nn.ReLU(),
-                                    nn.Linear(100, 2),
-                                    nn.Softplus())
-        self.dec_scale = nn.Sequential(nn.Linear(2, 100),
-                                    nn.ReLU(),
-                                    nn.Linear(100, 2),
-                                    nn.Softplus())
         
     def forward(self, x, beta=1.0, switch=1.0):
-        # Encoder step
+        # Encoder step 1
         z_mu, z_std = self.enc_mu(x), self.enc_std(x)
-        q_dist = D.Independent(D.Normal(z_mu, z_std.sqrt()), 1)
+        q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
         z = q_dist.rsample()
         
-        # Decoder step
-        x_mu, x_df, x_scale = self.dec_mu(z), self.dec_df(z), self.dec_scale(z)
-        p_dist = D.Independent(D.StudentT(x_df, x_mu, x_scale), 1)
+        # Decoder step 1
+        x_mu = self.dec_mu(z)
+        
+        # Encoder step 2
+        z_mu2 = self.enc_mu(x_mu)
+        x_std = (z_mu - z_mu2).norm(dim=1, keepdim=True)
+        x_std = switch * x_std + (1-switch)*torch.tensor(0.02)
+        
+        p_dist = D.Independent(D.Normal(x_mu, x_std), 1) 
         
         # Calculate loss
         prior = D.Independent(D.Normal(torch.zeros_like(z),
@@ -51,4 +49,4 @@ class VAE_student(nn.Module):
         kl = q_dist.log_prob(z) - prior.log_prob(z)
         elbo = (log_px - beta*kl).mean()
         
-        return elbo, x_mu, x_scale, z, z_mu, z_std
+        return elbo, x_mu, x_std, z, z_mu, z_std

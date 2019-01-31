@@ -18,28 +18,28 @@ class VAE_full(nn.Module):
         self.enc_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
                                     nn.Linear(100, 2))
-        self.enc_var = nn.Sequential(nn.Linear(2, 100), 
+        self.enc_std = nn.Sequential(nn.Linear(2, 100), 
                                      nn.ReLU(), 
                                      nn.Linear(100, 2), 
                                      nn.Softplus())
         self.dec_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
                                     nn.Linear(100, 2))
-        self.dec_var = nn.Sequential(nn.Linear(2, 100), 
+        self.dec_std = nn.Sequential(nn.Linear(2, 100), 
                                      nn.ReLU(), 
                                      nn.Linear(100, 2), 
                                      nn.Softplus())
         
     def forward(self, x, beta=1.0, switch=1.0):
         # Encoder step
-        z_mu, z_var = self.enc_mu(x), self.enc_var(x)
-        q_dist = D.Independent(D.Normal(z_mu, z_var.sqrt()), 1)
+        z_mu, z_std = self.enc_mu(x), self.enc_std(x)
+        q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
         z = q_dist.rsample()
         
         # Decoder step
-        x_mu, x_var = self.dec_mu(z), self.dec_var(z)
-        x_var = switch*x_var + (1-switch)*torch.tensor(0.02)**2 
-        p_dist = D.Independent(D.Normal(x_mu, x_var.sqrt()), 1)
+        x_mu, x_std = self.dec_mu(z), self.dec_std(z)
+        x_std = switch*x_std + (1-switch)*torch.tensor(0.02)
+        p_dist = D.Independent(D.Normal(x_mu, x_std), 1)
         
         # Calculate loss
         prior = D.Independent(D.Normal(torch.zeros_like(z),
@@ -48,5 +48,5 @@ class VAE_full(nn.Module):
         kl = q_dist.log_prob(z) - prior.log_prob(z)
         elbo = (log_px - beta*kl).mean()
         
-        return elbo, x_mu, x_var, z, z_mu, z_var
+        return elbo, x_mu, x_std, z, z_mu, z_std
 

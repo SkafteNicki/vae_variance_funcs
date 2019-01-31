@@ -12,6 +12,8 @@ from .vae_diag import VAE_diag
 from .vae_single import VAE_single
 from .vae_student import VAE_student
 from .vae_rbf import VAE_rbf
+from .vae_student_rbf import VAE_student_rbf
+from .vae_experimental import VAE_experimental
 
 #%%
 def get_model(model_name):
@@ -19,7 +21,9 @@ def get_model(model_name):
               'vae_diag': VAE_diag,
               'vae_single': VAE_single,
               'vae_student': VAE_student,
-              'vae_rbf': VAE_rbf
+              'vae_rbf': VAE_rbf,
+              'vae_student_rbf': VAE_student_rbf,
+              'vae_experimental': VAE_experimental
               }
     assert (model_name in models), 'Model not found, choose between: ' \
             + ', '.join([k for k in models.keys()])
