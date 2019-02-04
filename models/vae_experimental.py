@@ -11,6 +11,18 @@ from torch import nn
 from torch.nn import functional as F
 from torch import distributions as D
 
+import matplotlib.pyplot as plt
+import numpy as np
+
+class ownlinear(nn.Module):
+    def __init__(self,):
+        super(ownlinear, self).__init__()
+        self.a = nn.Parameter(torch.tensor(np.random.rand(2,).astype(np.float32)))
+        self.b = nn.Parameter(torch.tensor(np.random.rand(2,).astype(np.float32)))
+        
+    def forward(self, x):
+        return nn.functional.softplus(self.a) * x + nn.functional.softplus(self.b)
+
 #%%
 class VAE_experimental(nn.Module):
     def __init__(self, ):
@@ -25,46 +37,94 @@ class VAE_experimental(nn.Module):
         self.dec_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
                                     nn.Linear(100, 2))
-        self.adverserial = nn.Sequential(nn.Linear(2, 1000),
-                                         nn.ReLU(),
-                                         nn.Linear(1000, 1000),
-                                         nn.ReLU(),
-                                         nn.Linear(1000, 1),
-                                         nn.Sigmoid())
+        self.dec_std = nn.Sequential(ownlinear())
+        
+        # For plotting
+        self.fig, self.ax = plt.subplots(2, 3)
+        self.cont1 = self.ax[0,0].contourf(np.zeros((2,2)), np.zeros((2,2)), np.zeros((2,2)))
+        self.ax[0,0].set_title('z - zxz(1)')
+        self.cont2 = self.ax[0,1].contourf(np.zeros((2,2)), np.zeros((2,2)), np.zeros((2,2)))
+        self.ax[0,1].set_title('z - zxz(2)')
+        self.cont3 = self.ax[0,2].contourf(np.zeros((2,2)), np.zeros((2,2)), np.zeros((2,2)))
+        self.ax[0,2].set_title('z - zxz(3)')
+        self.cont4 = self.ax[1,0].contourf(np.zeros((2,2)), np.zeros((2,2)), np.zeros((2,2)))
+        self.ax[1,0].set_title('z - zxz(4)')
+        self.cont5 = self.ax[1,1].contourf(np.zeros((2,2)), np.zeros((2,2)), np.zeros((2,2)))
+        self.ax[1,1].set_title('z - zxz(5)')
+        self.cont6 = self.ax[1,2].contourf(np.zeros((2,2)), np.zeros((2,2)), np.zeros((2,2)))
+        self.ax[1,2].set_title('z - zxz(6)')
         
     def encoder(self, x):
         return self.enc_mu(x), self.enc_std(x)
         
     def decoder(self, z, switch=1.0):
         x_mu = self.dec_mu(z)
+        z_hat = self.enc_mu(x_mu)
+        diff = (z-z_hat).norm(dim=1, keepdim=True)
+        x_std = switch*self.dec_std(diff) + (1-switch)*torch.tensor(0.02**2)
         
-        prop = self.adverserial(x_mu)
-        x_std = 1.0 / (prop+1e-6)
+        if self.training == False:
+            
+            p1 = (z-z_hat).norm(dim=1, keepdim=True).cpu().numpy()
+            x_mu = self.dec_mu(z_hat)
+            z_hat = self.enc_mu(x_mu)
+            p2 = (z-z_hat).norm(dim=1, keepdim=True).cpu().numpy()
+            x_mu = self.dec_mu(z_hat)
+            z_hat = self.enc_mu(x_mu)
+            p3 = (z-z_hat).norm(dim=1, keepdim=True).cpu().numpy()
+            x_mu = self.dec_mu(z_hat)
+            z_hat = self.enc_mu(x_mu)
+            p4 = (z-z_hat).norm(dim=1, keepdim=True).cpu().numpy()
+            x_mu = self.dec_mu(z_hat)
+            z_hat = self.enc_mu(x_mu)
+            p5 = (z-z_hat).norm(dim=1, keepdim=True).cpu().numpy()
+            x_mu = self.dec_mu(z_hat)
+            z_hat = self.enc_mu(x_mu)
+            p6 = (z-z_hat).norm(dim=1, keepdim=True).cpu().numpy()
+            
+            z = z.cpu().numpy()
+            
+            for coll in self.cont1.collections: self.ax[0,0].collections.remove(coll)
+            self.cont1 = self.ax[0,0].contourf(z[:,0].reshape(100, 100),
+                                             z[:,1].reshape(100, 100),
+                                             np.log(p1.sum(axis=1)).reshape(100, 100))
+            for coll in self.cont2.collections: self.ax[0,1].collections.remove(coll)
+            self.cont2 = self.ax[0,1].contourf(z[:,0].reshape(100, 100),
+                                             z[:,1].reshape(100, 100),
+                                             np.log(p2.sum(axis=1)).reshape(100, 100))
+            for coll in self.cont3.collections: self.ax[0,2].collections.remove(coll)
+            self.cont3 = self.ax[0,2].contourf(z[:,0].reshape(100, 100),
+                                             z[:,1].reshape(100, 100),
+                                             np.log(p3.sum(axis=1)).reshape(100, 100))
+            for coll in self.cont4.collections: self.ax[1,0].collections.remove(coll)
+            self.cont4 = self.ax[1,0].contourf(z[:,0].reshape(100, 100),
+                                             z[:,1].reshape(100, 100),
+                                             np.log(p4.sum(axis=1)).reshape(100, 100))
+            for coll in self.cont5.collections: self.ax[1,1].collections.remove(coll)
+            self.cont5 = self.ax[1,1].contourf(z[:,0].reshape(100, 100),
+                                             z[:,1].reshape(100, 100),
+                                             np.log(p5.sum(axis=1)).reshape(100, 100))
+            for coll in self.cont6.collections: self.ax[1,2].collections.remove(coll)
+            self.cont6 = self.ax[1,2].contourf(z[:,0].reshape(100, 100),
+                                             z[:,1].reshape(100, 100),
+                                             np.log(p6.sum(axis=1)).reshape(100, 100))
+            self.fig.canvas.draw()
+            plt.pause(0.01)
+            
+            print(list(self.dec_std.parameters()))
         
-        return x_mu, switch*x_std+(1-switch)*torch.tensor(0.02**2)
+        return x_mu, x_std
     
     def forward(self, x, beta=1.0, switch=1.0, iw_samples=1):
         # Encoder step
         z_mu, z_std = self.encoder(x)
         q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
-        z = q_dist.rsample([iw_samples])
+        z = q_dist.rsample()
         
         # Decoder step
         x_mu, x_std = self.decoder(z, switch)
         
-        if switch:
-            valid = torch.ones((x.shape[0], 1),  device = x.device)
-            fake = torch.zeros((x.shape[0], 1), device = x.device)
-            labels = torch.cat([valid, fake], dim=0)
-            x_cat = torch.cat([x, x_mu[0]], dim=0)
-            
-            prop = self.adverserial(x_cat)
-            advert_loss = F.binary_cross_entropy(prop, labels, reduction='sum')
-            x_std = 1.0 / (prop+1e-6)
-        else:
-            advert_loss = 0
-        
-        p_dist = D.Independent(D.Normal(x_mu[0], x_std[:x.shape[0]]), 1)
+        p_dist = D.Independent(D.Normal(x_mu, x_std), 1)
         
         # Calculate loss
         prior = D.Independent(D.Normal(torch.zeros_like(z),
@@ -72,7 +132,6 @@ class VAE_experimental(nn.Module):
         log_px = p_dist.log_prob(x)
         kl = q_dist.log_prob(z) - prior.log_prob(z)
         elbo = (log_px - beta*kl).mean()
-        iw_elbo = elbo.logsumexp(dim=0) - torch.tensor(float(iw_samples)).log()
         
-        return iw_elbo.mean() - 10*advert_loss, log_px.mean(), kl.mean(), x_mu[0], x_std, z[0], z_mu, z_std
+        return elbo.mean(), log_px.mean(), kl.mean(), x_mu, x_std, z, z_mu, z_std
     

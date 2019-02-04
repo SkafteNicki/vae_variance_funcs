@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tue Jan 29 10:30:36 2019
+Created on Mon Feb  4 10:26:16 2019
 
 @author: nsde
 """
@@ -9,6 +9,7 @@ Created on Tue Jan 29 10:30:36 2019
 #%%
 import argparse, datetime
 import torch
+from torch import nn
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -37,29 +38,65 @@ def argparser():
     # Dataset settings
     ds = parser.add_argument_group('Dataset settings')
     ds.add_argument('--n', type=int, default=1000, help='number of points in each class')
-    ds.add_argument('--logdir', type=str, default='res', help='where to store results')
-    ds.add_argument('--dataset', type=str, default='mnist', help='dataset to use')
+
     
     # Parse and return
     args = parser.parse_args()
     return args
 
 #%%
+class mymodel(nn.Module):
+    def __init__(self, ):
+        super(mymodel, self).__init__()
+        self.enc_mu = nn.Sequential(nn.Linear(2, 100), 
+                                    nn.ReLU(), 
+                                    nn.Linear(100, 2))
+        self.enc_std = nn.Sequential(nn.Linear(2, 100), 
+                                     nn.ReLU(), 
+                                     nn.Linear(100, 2), 
+                                     nn.Softplus())
+        self.dec_mu = nn.Sequential(nn.Linear(2, 100), 
+                                    nn.ReLU(), 
+                                    nn.Linear(100, 2))
+        
+    def encoder(self, x):
+        return self.enc_mu, self.end_std
+        
+    def decoder(self, z, switch=1.0):
+        x_mu = self.dec_mu(z)
+        z_hat = self.end_mu(x_mu)
+        x_std = switch*(z-z_hat).norm(dim=1, keepdim=1) + (1-switch)*torch.tensor(0.02**2)
+        return x_mu, x_std
+        
+    def forward(self, x, beta=1.0, switch=1.0, iw_samples=1):
+        # Encoder step
+        z_mu, z_std = self.encoder(x)
+        q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
+        z = q_dist.rsample([iw_samples])
+        
+        # Decoder step
+        x_mu, x_std = self.decoder(z, switch)
+        p_dist = D.Independent(D.Normal(x_mu, x_std), 1)
+        
+        # Calculate loss
+        prior = D.Independent(D.Normal(torch.zeros_like(z),
+                                       torch.ones_like(z)), 1)
+        log_px = p_dist.log_prob(x)
+        kl = q_dist.log_prob(z) - prior.log_prob(z)
+        elbo = (log_px - beta*kl).mean()
+        iw_elbo = elbo.logsumexp(dim=0) - torch.tensor(float(iw_samples)).log()
+        
+        return iw_elbo.mean(), log_px.mean(), kl.mean(), x_mu[0], x_std[0], z[0], z_mu, z_std
+        
+#%%
 if __name__ == '__main__':
     # Input arguments
     args = argparser()
 
-    # Logdir for results
-    if args.logdir == '':
-        logdir = 'res/' + args.model + '/' + datetime.datetime.now().strftime('%Y_%m_%d_%H_%M')
-    else:
-        logdir = 'res/' + args.model + '/' + args.logdir
-    
     # Load dataset
     X, y = two_moons(args.n)
     
     # Construct models
-    model_class = get_model(args.model)
     model = model_class()
     
     if torch.cuda.is_available():
@@ -103,7 +140,6 @@ if __name__ == '__main__':
     n_batch = int(np.ceil(X.shape[0] // args.batch_size))
     for e in range(1, args.n_epochs+1):
         loss, loss_recon, loss_kl = 0, 0, 0
-        model.train()
         for i in range(n_batch):
             optimizer.zero_grad()
             
@@ -138,10 +174,8 @@ if __name__ == '__main__':
         losslist3.append(abs(loss_kl))
         mean_std.append(x_std.mean().item())
         
-        model.eval()
         if e % 50 == 0:
             with torch.no_grad():
-                
                 x_mu = x_mu.detach().cpu()
                 z = z.detach().cpu()
                 # Loss 
@@ -171,7 +205,7 @@ if __name__ == '__main__':
                 for coll in cont1.collections: ax[0,2].collections.remove(coll)
                 cont1 = ax[0,2].contourf(grid[:,0].reshape(100, 100),
                                          grid[:,1].reshape(100, 100),
-                                         np.log(z_std.sum(axis=1)).reshape(100, 100), 50)
+                                         np.log(z_std.sum(axis=1)).reshape(100, 100))
                 
                 # Decoder variance
                 grid = np.stack([array.flatten() for array in np.meshgrid(
@@ -189,7 +223,7 @@ if __name__ == '__main__':
                 for coll in cont2.collections: ax[1,2].collections.remove(coll)
                 cont2 = ax[1,2].contourf(grid[:,0].reshape(100, 100),
                                          grid[:,1].reshape(100, 100),
-                                         np.log(x_std.sum(axis=1)).reshape(100, 100), 50)
+                                         np.log(x_std.sum(axis=1)).reshape(100, 100))
                 
                 if hasattr(model, 'C'): # plot clusters
                     scat5.set_data(model.C[:,0].detach().cpu(), model.C[:,1].detach().cpu())

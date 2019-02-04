@@ -1,66 +1,87 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tue Jan 29 10:30:36 2019
+Created on Mon Feb  4 08:30:20 2019
 
 @author: nsde
 """
 
 #%%
-import argparse, datetime
-import torch
-import matplotlib.pyplot as plt
-import numpy as np
-
-from models import get_model
 from data import two_moons
-
+from sklearn.cluster import AgglomerativeClustering
+import numpy as np
+import matplotlib.pyplot as plt
+import torch
+from torch import nn
+import torch.distributions as D
 #%%
-def argparser():
-    """ Argument parser for the main script """
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    # Model settings
-    ms = parser.add_argument_group('Model settings')
-    ms.add_argument('--model', type=str, default='vae_experimental', help='model to train')
-    ms.add_argument('--beta', type=float, default=1.0, help='weighting of KL term')
-    ms.add_argument('--switch', type=lambda x: (str(x).lower() == 'true'), default=True, help='use switch for variance')
-    ms.add_argument('--anneling', type=lambda x: (str(x).lower() == 'true'), default=True, help='use anneling for kl term')
-    
-    # Training settings
-    ts = parser.add_argument_group('Training settings')
-    ts.add_argument('--n_epochs', type=int, default=2000, help='number of epochs of training')
-    ts.add_argument('--batch_size', type=int, default=2000, help='size of the batches')
-    ts.add_argument('--warmup', type=int, default=1000, help='number of warmup epochs for kl-terms')
-    ts.add_argument('--lr', type=float, default=1e-3, help='learning rate for adam optimizer')
-    ts.add_argument('--iw_samples', type=int, default=1, help='number of importance weighted samples')
-
-    # Dataset settings
-    ds = parser.add_argument_group('Dataset settings')
-    ds.add_argument('--n', type=int, default=1000, help='number of points in each class')
-    ds.add_argument('--logdir', type=str, default='res', help='where to store results')
-    ds.add_argument('--dataset', type=str, default='mnist', help='dataset to use')
-    
-    # Parse and return
-    args = parser.parse_args()
-    return args
+class args:
+    n_clust = 2
+    lr = 0.001
+    batch_size = 2000
+    n = 1000
+    n_epochs = 3000
+    warmup = 1000
 
 #%%
 if __name__ == '__main__':
-    # Input arguments
-    args = argparser()
-
-    # Logdir for results
-    if args.logdir == '':
-        logdir = 'res/' + args.model + '/' + datetime.datetime.now().strftime('%Y_%m_%d_%H_%M')
-    else:
-        logdir = 'res/' + args.model + '/' + args.logdir
-    
     # Load dataset
-    X, y = two_moons(args.n)
+    X, y = two_moons(1000)
     
-    # Construct models
-    model_class = get_model(args.model)
-    model = model_class()
+    # Preprocessing
+    clusterAlg = AgglomerativeClustering(n_clusters=args.n_clust, linkage='single')
+    clusterAlg.fit(X)
+    labels = torch.tensor(clusterAlg.labels_)
+    
+    class newvae(nn.Module):
+        def __init__(self, ):
+            super(newvae, self).__init__()
+            self.enc_mu = nn.Sequential(nn.Linear(2, 100), 
+                                        nn.ReLU(), 
+                                        nn.Linear(100, 2))
+            self.enc_std = nn.Sequential(nn.Linear(2, 100), 
+                                         nn.ReLU(), 
+                                         nn.Linear(100, 2), 
+                                         nn.Softplus())
+            self.dec_mu = nn.Sequential(nn.Linear(2, 100), 
+                                        nn.ReLU(), 
+                                        nn.Linear(100, 2))
+            self.cluster = nn.Sequential(nn.Linear(2, 100),
+                                         nn.ReLU(),
+                                         nn.Linear(100, args.n_clust),
+                                         nn.Softmax())
+        
+        def encoder(self, x):
+            return self.enc_mu(x), self.enc_std(x)
+            
+        def decoder(self, z, switch):
+            x_mu = self.dec_mu(z)
+            prop = self.cluster(z)
+            x_std = -(prop * prop.log()).sum(dim=1, keepdim=True)
+            return x_mu, switch*x_std + (1-switch)*torch.tensor(0.02**2)
+            
+        def forward(self, x, switch, labels):
+            z_mu, z_std = self.enc_mu(x), self.enc_std(x)
+            q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
+            z = q_dist.rsample()
+            
+            x_mu = self.dec_mu(z)
+            prop = self.cluster(z)
+            
+            x_std = -(prop * prop.log()).sum(dim=1, keepdim=True)
+            x_std = switch*x_std + (1-switch)*torch.tensor(0.02**2)
+            nll_loss = nn.functional.nll_loss(prop, labels)
+            p_dist = D.Independent(D.Normal(x_mu, x_std), 1)
+            
+            prior = D.Independent(D.Normal(torch.zeros_like(z),
+                                           torch.ones_like(z)), 1)
+            log_px = p_dist.log_prob(x)
+            kl = q_dist.log_prob(z) - prior.log_prob(z)
+            elbo = (log_px - 1.0*kl).mean()
+        
+            return elbo.mean() - nll_loss, log_px.mean(), kl.mean(), x_mu, x_std, z, z_mu, z_std
+    
+    model = newvae()
     
     if torch.cuda.is_available():
         model.cuda()
@@ -103,23 +124,13 @@ if __name__ == '__main__':
     n_batch = int(np.ceil(X.shape[0] // args.batch_size))
     for e in range(1, args.n_epochs+1):
         loss, loss_recon, loss_kl = 0, 0, 0
-        model.train()
         for i in range(n_batch):
             optimizer.zero_grad()
-            
-            # Training params
-            if args.switch:
-                switch = 1.0 if args.n_epochs/2 < e else 0.0 
-            else:
-                switch = 1.0
-            if args.anneling:
-                beta = args.beta*float(np.minimum(1, e/args.warmup))
-            else:
-                beta = args.beta
-
+            switch = 1.0 if args.n_epochs/2 < e else 0.0 
             # Forward pass
             x = X[i*args.batch_size:(i+1)*args.batch_size].to(device)
-            elbo, recon, kl, x_mu, x_std, z, z_mu, z_std = model(x, beta, switch, args.iw_samples)
+            y = labels[i*args.batch_size:(i+1)*args.batch_size].to(device)
+            elbo, recon, kl, x_mu, x_std, z, z_mu, z_std = model(x, switch, y)
             
             # Backward pass
             (-elbo).backward() # maximize elbo <-> minimize -elbo
@@ -129,7 +140,7 @@ if __name__ == '__main__':
             loss += -elbo.item()
             loss_recon += recon.item()
             loss_kl += kl.item()
-            
+        
         # Print progress
         print('Epoch: {0}/{1}, ELBO: {2:.3f}, Recon: {3:.3f}, KL: {4:.3f}'.format(
                 e, args.n_epochs, loss, loss_recon, loss_kl))
@@ -138,10 +149,8 @@ if __name__ == '__main__':
         losslist3.append(abs(loss_kl))
         mean_std.append(x_std.mean().item())
         
-        model.eval()
         if e % 50 == 0:
             with torch.no_grad():
-                
                 x_mu = x_mu.detach().cpu()
                 z = z.detach().cpu()
                 # Loss 
@@ -171,29 +180,21 @@ if __name__ == '__main__':
                 for coll in cont1.collections: ax[0,2].collections.remove(coll)
                 cont1 = ax[0,2].contourf(grid[:,0].reshape(100, 100),
                                          grid[:,1].reshape(100, 100),
-                                         np.log(z_std.sum(axis=1)).reshape(100, 100), 50)
+                                         np.log(z_std.sum(axis=1)).reshape(100, 100))
                 
                 # Decoder variance
                 grid = np.stack([array.flatten() for array in np.meshgrid(
                         np.linspace(-5, 5, 100),
                         np.linspace(-5, 5, 100))]).T
-                if args.model != 'vae_student':
-                    _, x_std = model.decoder(torch.tensor(grid).to(torch.float32).to(device), 
-                                             switch)
-                else:
-                    _, x_df, x_scale = model.decoder(torch.tensor(grid).to(torch.float32).to(device), 
-                                             switch)
-                    x_std = x_df / (x_df - 2) * x_scale
+
+                _, x_std = model.decoder(torch.tensor(grid).to(torch.float32).to(device), switch)              
                 
                 x_std = x_std.cpu().numpy()
                 for coll in cont2.collections: ax[1,2].collections.remove(coll)
                 cont2 = ax[1,2].contourf(grid[:,0].reshape(100, 100),
                                          grid[:,1].reshape(100, 100),
-                                         np.log(x_std.sum(axis=1)).reshape(100, 100), 50)
-                
-                if hasattr(model, 'C'): # plot clusters
-                    scat5.set_data(model.C[:,0].detach().cpu(), model.C[:,1].detach().cpu())
-                
+                                         np.log(x_std.sum(axis=1)).reshape(100, 100))
+
                 if e == args.n_epochs: # put colorbars on plot in the end
                     plt.colorbar(cont1, ax=ax[0,2])
                     plt.colorbar(cont2, ax=ax[1,2])
@@ -201,6 +202,5 @@ if __name__ == '__main__':
                 # Draw
                 plt.draw()
                 plt.pause(0.01)
-                
-    plt.savefig(str(args.model) + '.pdf')
+    
     plt.show(block=True)
