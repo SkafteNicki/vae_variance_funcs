@@ -12,13 +12,6 @@ from torch.nn import functional as F
 from torch import distributions as D
 
 #%%
-def dist(X, Y): # X: N x d , Y: M x d
-    dist =  X.norm(p=2, dim=1, keepdim=True)**2 + \
-            Y.norm(p=2, dim=1, keepdim=False)**2 - \
-            2*torch.mm(X, Y.t())
-    return dist # N x M
-
-#%%
 class VAE_experimental(nn.Module):
     def __init__(self, ):
         super(VAE_experimental, self).__init__()
@@ -32,30 +25,46 @@ class VAE_experimental(nn.Module):
         self.dec_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
                                     nn.Linear(100, 2))
-        self.C = nn.Parameter(torch.randn(30, 2))
-        self.W = nn.Parameter(torch.rand(30,2))
-        #self.lamb = 5
-        self.alpha = nn.Parameter(torch.rand(30,)+10)
-        self.lamb = nn.Parameter(5*torch.rand(30,)+5)
-    
+        self.adverserial = nn.Sequential(nn.Linear(2, 1000),
+                                         nn.ReLU(),
+                                         nn.Linear(1000, 1000),
+                                         nn.ReLU(),
+                                         nn.Linear(1000, 1),
+                                         nn.Sigmoid())
+        
     def encoder(self, x):
         return self.enc_mu(x), self.enc_std(x)
-    
+        
     def decoder(self, z, switch=1.0):
         x_mu = self.dec_mu(z)
-        inv_std = torch.mm((self.alpha**2)*torch.exp(-F.softplus(self.lamb) * dist(z, self.C)), F.softplus(self.W)) + 1e-10
-        x_std = switch * (1.0/inv_std) + (1-switch)*torch.tensor(0.02**2)
-        return x_mu, x_std
+        
+        prop = self.adverserial(x_mu)
+        x_std = 1.0 / (prop+1e-6)
+        
+        return x_mu, switch*x_std+(1-switch)*torch.tensor(0.02**2)
     
-    def forward(self, x, beta=1.0, switch=1.0):
+    def forward(self, x, beta=1.0, switch=1.0, iw_samples=1):
         # Encoder step
         z_mu, z_std = self.encoder(x)
         q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
-        z = q_dist.rsample()
+        z = q_dist.rsample([iw_samples])
         
         # Decoder step
         x_mu, x_std = self.decoder(z, switch)
-        p_dist = D.Independent(D.Normal(x_mu, x_std), 1) 
+        
+        if switch:
+            valid = torch.ones((x.shape[0], 1),  device = x.device)
+            fake = torch.zeros((x.shape[0], 1), device = x.device)
+            labels = torch.cat([valid, fake], dim=0)
+            x_cat = torch.cat([x, x_mu[0]], dim=0)
+            
+            prop = self.adverserial(x_cat)
+            advert_loss = F.binary_cross_entropy(prop, labels, reduction='sum')
+            x_std = 1.0 / (prop+1e-6)
+        else:
+            advert_loss = 0
+        
+        p_dist = D.Independent(D.Normal(x_mu[0], x_std[:x.shape[0]]), 1)
         
         # Calculate loss
         prior = D.Independent(D.Normal(torch.zeros_like(z),
@@ -63,12 +72,7 @@ class VAE_experimental(nn.Module):
         log_px = p_dist.log_prob(x)
         kl = q_dist.log_prob(z) - prior.log_prob(z)
         elbo = (log_px - beta*kl).mean()
-        print((x_mu - x).norm(dim=1).mean().item())
-        print(x_std.mean().item())
-        return elbo, log_px.mean(), kl.mean(), x_mu, x_std, z, z_mu, z_std
-    
-    def final(self):
-        print(self.lamb)
-        print(self.W)
-        print(self.alpha)
+        iw_elbo = elbo.logsumexp(dim=0) - torch.tensor(float(iw_samples)).log()
         
+        return iw_elbo.mean() - 10*advert_loss, log_px.mean(), kl.mean(), x_mu[0], x_std, z[0], z_mu, z_std
+    

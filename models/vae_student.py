@@ -29,7 +29,7 @@ class VAE_student(nn.Module):
                                     nn.ReLU(),
                                     nn.Linear(100, 2),
                                     nn.Softplus())
-        self.dec_scale = nn.Sequential(nn.Linear(2, 100),
+        self.dec_std = nn.Sequential(nn.Linear(2, 100),
                                     nn.ReLU(),
                                     nn.Linear(100, 2),
                                     nn.Softplus())
@@ -38,17 +38,17 @@ class VAE_student(nn.Module):
         return self.enc_mu(x), self.enc_std(x)        
     
     def decoder(self, z, switch=1.0):
-        return self.dec_mu(z), self.dec_df(z), self.dec_scale(z)
+        return self.dec_mu(z), self.dec_df(z), self.dec_std(z)
 
-    def forward(self, x, beta=1.0, switch=1.0):
+    def forward(self, x, beta=1.0, switch=1.0, iw_samples=1):
         # Encoder step
         z_mu, z_std = self.encoder(x)
         q_dist = D.Independent(D.Normal(z_mu, z_std.sqrt()), 1)
-        z = q_dist.rsample()
+        z = q_dist.rsample([iw_samples])
         
         # Decoder step
-        x_mu, x_df, x_scale = self.decoder(z, switch)
-        p_dist = D.Independent(D.StudentT(x_df, x_mu, x_scale), 1)
+        x_mu, x_df, x_std = self.decoder(z, switch)
+        p_dist = D.Independent(D.StudentT(x_df, x_mu, x_std), 1)
         
         # Calculate loss
         prior = D.Independent(D.Normal(torch.zeros_like(z),
@@ -56,5 +56,6 @@ class VAE_student(nn.Module):
         log_px = p_dist.log_prob(x)
         kl = q_dist.log_prob(z) - prior.log_prob(z)
         elbo = (log_px - beta*kl).mean()
+        iw_elbo = elbo.logsumexp(dim=0) - torch.tensor(float(iw_samples)).log()
         
-        return elbo, log_px.mean(), kl.mean(), x_mu, x_scale, z, z_mu, z_std
+        return iw_elbo.mean(), log_px.mean(), kl.mean(), x_mu[0], x_std[0], z[0], z_mu, z_std

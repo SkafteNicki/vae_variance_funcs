@@ -19,7 +19,7 @@ class singleStd(nn.Module):
         self.outputsize = outputsize
     
     def forward(self, z):
-        return self.std*torch.ones(z.shape[0], self.outputsize, device=z.device)
+        return self.std*torch.ones(*z.shape[:-1], self.outputsize, device=z.device)
 
 #%%
 class VAE_single(nn.Module):
@@ -46,11 +46,11 @@ class VAE_single(nn.Module):
         x_std = switch*x_std + (1-switch)*torch.tensor(0.02**2)
         return x_mu, x_std
     
-    def forward(self, x, beta=1.0, switch=1.0):
+    def forward(self, x, beta=1.0, switch=1.0, iw_samples=1):
         # Encoder step
         z_mu, z_std = self.encoder(x)
         q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
-        z = q_dist.rsample()
+        z = q_dist.rsample([iw_samples])
         
         # Decoder step
         x_mu, x_std = self.decoder(z, switch)
@@ -62,5 +62,6 @@ class VAE_single(nn.Module):
         log_px = p_dist.log_prob(x)
         kl = q_dist.log_prob(z) - prior.log_prob(z)
         elbo = (log_px - beta*kl).mean()
+        iw_elbo = elbo.logsumexp(dim=0) - torch.tensor(float(iw_samples)).log()
         
-        return elbo, log_px.mean(), kl.mean(), x_mu, x_std, z, z_mu, z_std
+        return iw_elbo.mean(), log_px.mean(), kl.mean(), x_mu[0], x_std[0], z[0], z_mu, z_std
