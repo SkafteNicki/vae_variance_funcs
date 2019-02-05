@@ -27,22 +27,24 @@ from itertools import chain
 class VAE_experimental(nn.Module):
     def __init__(self, ):
         super(VAE_experimental, self).__init__()
-        self.enc_mu = nn.Sequential(nn.Linear(2, 100), 
+        self.enc_mu = nn.Sequential(nn.Linear(2, 20), 
                                     nn.ReLU(), 
-                                    nn.Linear(100, 2))
-        self.enc_std = nn.Sequential(nn.Linear(2, 100), 
+                                    nn.Linear(20, 2))
+        self.enc_std = nn.Sequential(nn.Linear(2, 20), 
                                      nn.ReLU(), 
-                                     nn.Linear(100, 2), 
+                                     nn.Linear(20, 2), 
                                      nn.Softplus())
-        self.dec_mu = nn.Sequential(nn.Linear(2, 100), 
+        self.dec_mu = nn.Sequential(nn.Linear(2, 20), 
                                     nn.ReLU(), 
-                                    nn.Linear(100, 2))
-        self.adverserial = nn.Sequential(nn.Linear(2, 1000),
+                                    nn.Linear(20, 2))
+        self.adverserial = nn.Sequential(nn.Linear(2, 100),
                                          nn.ReLU(),
-                                         nn.Linear(1000, 1000),
+                                         nn.Linear(100, 100),
                                          nn.ReLU(),
-                                         nn.Linear(1000, 1),
+                                         nn.Linear(100, 1),
                                          nn.Sigmoid())
+        self.dec_std = nn.Sequential(nn.Linear(1, 2),
+                                     nn.Softplus())
         
     def encoder(self, x):
         return self.enc_mu(x), self.enc_std(x)
@@ -65,14 +67,14 @@ class VAE_experimental(nn.Module):
         x_mu, x_std = self.decoder(z, switch)
         
         if switch:
-            valid = torch.ones((x.shape[0], 1),  device = x.device)
-            fake = torch.zeros((x.shape[0], 1), device = x.device)
-            labels = torch.cat([valid, fake], dim=0)
-            x_cat = torch.cat([x, x_mu[0]], dim=0)
+            valid = torch.zeros((x.shape[0], 1), device = x.device)
+            fake = torch.ones((x.shape[0], 1), device = x.device)
+            labels = torch.cat([valid, fake[::2]], dim=0)
+            x_cat = torch.cat([x, x_mu[0][::2]], dim=0)
             
             prop = self.adverserial(x_cat)
             advert_loss = F.binary_cross_entropy(prop, labels, reduction='sum')
-            x_std = 1.0 / (prop+1e-6)
+            x_std = self.dec_std(prop)#prop#1.0 / (prop+1e-6)
         else:
             advert_loss = 0
         
@@ -86,7 +88,7 @@ class VAE_experimental(nn.Module):
         elbo = (log_px - beta*kl).mean()
         iw_elbo = elbo.logsumexp(dim=0) - torch.tensor(float(iw_samples)).log()
         
-        return iw_elbo.mean() - 10*advert_loss, log_px.mean(), kl.mean(), x_mu[0], x_std, z[0], z_mu, z_std
+        return iw_elbo.mean() - advert_loss, log_px.mean(), kl.mean(), x_mu[0], x_std, z[0], z_mu, z_std
 
 #%%
 def argparser():
@@ -137,4 +139,142 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(chain(model.enc_mu.parameters(),
                                        model.enc_std.parameters(),
                                        model.dec_mu.parameters()), lr=args.lr)
-    optimizer2 = torch.optim.Adam(model.adverserial.parameters(), lr=args.lr)
+    optimizer2 = torch.optim.Adam(chain(model.adverserial.parameters(),
+                                        model.dec_std.parameters()), lr=args.lr)
+    
+    # For plotting
+    fig, ax = plt.subplots(3, 3)
+    plt.subplots_adjust(hspace=0.3, wspace=0.3)
+    ax[0,0].plot(X[:args.n,0].numpy(), X[:args.n,1].numpy(), 'r.')
+    ax[0,0].plot(X[args.n:,0].numpy(), X[args.n:,1].numpy(), 'b.')
+    ax[0,0].set_xlim(-2,2)
+    ax[0,0].set_ylim(-2,2)
+    ax[0,0].set_title('Training data')
+    line, = ax[1,0].semilogy([ ], 'b-')
+    ax[1,0].set_title('Negative ELBO')
+    scat1, = ax[0,1].plot([ ], [ ], 'r.')
+    scat2, = ax[0,1].plot([ ], [ ], 'b.')
+    ax[0,1].set_title('Reconstruction')
+    scat3, = ax[1,1].plot([ ], [ ], 'r.')
+    scat4, = ax[1,1].plot([ ], [ ], 'b.')
+    scat5, = ax[1,1].plot([ ], [ ], 'g*')
+    ax[1,1].set_title('Latent space')
+    cont1 = ax[0,2].contourf(np.zeros((2,2)), np.zeros((2,2)), np.zeros((2,2)))
+    ax[0,2].set_title('Encoder variance')
+    cont2 = ax[1,2].contourf(np.zeros((2,2)), np.zeros((2,2)), np.zeros((2,2)))
+    ax[1,2].set_title('Decoder variance')
+    line2, = ax[2,0].plot([ ], 'b-')
+    ax[2,0].set_title('Reconstruction')
+    line3, = ax[2,1].plot([ ], 'b-')
+    ax[2,1].set_title('KL')
+    line4, = ax[2,2].semilogy([ ], 'b-')
+    ax[2,2].set_title('Mean decoder std estimate')
+    
+    losslist, losslist2, losslist3, mean_std = [ ], [ ], [ ], [ ]
+    n_batch = int(np.ceil(X.shape[0] // args.batch_size))
+    for e in range(1, args.n_epochs+1):
+        loss, loss_recon, loss_kl = 0, 0, 0
+        model.train()
+        
+        # Training params
+        if args.switch:
+            switch = 1.0 if 1000 < e else 0.0 
+        else:
+            switch = 1.0
+        if args.anneling:
+            beta = args.beta*float(np.minimum(1, e/args.warmup))
+        else:
+            beta = args.beta
+        
+        for i in range(n_batch):
+            optimizer.zero_grad()
+            optimizer2.zero_grad()
+            
+            # Forward pass
+            x = X[i*args.batch_size:(i+1)*args.batch_size].to(device)
+            elbo, recon, kl, x_mu, x_std, z, z_mu, z_std = model(x, beta, switch, args.iw_samples)
+            
+            # Backward pass
+            (-elbo).backward() # maximize elbo <-> minimize -elbo
+            if not switch: optimizer.step()
+            else: optimizer2.step()
+            
+            # Save
+            loss += -elbo.item()
+            loss_recon += recon.item()
+            loss_kl += kl.item()
+            
+        # Print progress
+        print('Epoch: {0}/{1}, ELBO: {2:.3f}, Recon: {3:.3f}, KL: {4:.3f}'.format(
+                e, args.n_epochs, loss, loss_recon, loss_kl))
+        losslist.append(loss)
+        losslist2.append(abs(loss_recon))
+        losslist3.append(abs(loss_kl))
+        mean_std.append(x_std.mean().item())
+        
+        model.eval()
+        if e % 50 == 0:
+            with torch.no_grad():
+                
+                x_mu = x_mu.detach().cpu()
+                z = z.detach().cpu()
+                # Loss 
+                ax[1,0].semilogy(losslist, 'b-')
+                ax[2,0].semilogy(losslist2, 'b-')
+                ax[2,1].semilogy(losslist3, 'b-')
+                ax[2,2].semilogy(mean_std, 'b-')
+                
+                # Reconstruction
+                scat1.set_data(x_mu[:args.n,0], x_mu[:args.n,1])
+                scat2.set_data(x_mu[args.n:,0], x_mu[args.n:,1])
+                ax[0,1].set_xlim(-2,2)
+                ax[0,1].set_ylim(-2,2)
+    
+                # Latent space
+                scat3.set_data(z[:args.n,0], z[:args.n,1])
+                scat4.set_data(z[args.n:,0], z[args.n:,1])
+                ax[1,1].set_xlim(-5,5)
+                ax[1,1].set_ylim(-5,5)
+                
+                # Encoder variance
+                grid = np.stack([array.flatten() for array in np.meshgrid(
+                        np.linspace(-2, 2, 100),
+                        np.linspace(-2, 2, 100))]).T
+                _, z_std = model.encoder(torch.tensor(grid).to(torch.float32).to(device))
+                z_std = z_std.cpu().numpy()
+                for coll in cont1.collections: ax[0,2].collections.remove(coll)
+                cont1 = ax[0,2].contourf(grid[:,0].reshape(100, 100),
+                                         grid[:,1].reshape(100, 100),
+                                         np.log(z_std.sum(axis=1)).reshape(100, 100), 50)
+                
+                # Decoder variance
+                grid = np.stack([array.flatten() for array in np.meshgrid(
+                        np.linspace(-5, 5, 100),
+                        np.linspace(-5, 5, 100))]).T
+                if args.model != 'vae_student':
+                    _, x_std = model.decoder(torch.tensor(grid).to(torch.float32).to(device), 
+                                             switch)
+                else:
+                    _, x_df, x_scale = model.decoder(torch.tensor(grid).to(torch.float32).to(device), 
+                                             switch)
+                    x_std = x_df / (x_df - 2) * x_scale
+                
+                x_std = x_std.cpu().numpy()
+                for coll in cont2.collections: ax[1,2].collections.remove(coll)
+                cont2 = ax[1,2].contourf(grid[:,0].reshape(100, 100),
+                                         grid[:,1].reshape(100, 100),
+                                         np.log(x_std.sum(axis=1)).reshape(100, 100), 50)
+                
+                if hasattr(model, 'C'): # plot clusters
+                    scat5.set_data(model.C[:,0].detach().cpu(), model.C[:,1].detach().cpu())
+                
+                if e == args.n_epochs: # put colorbars on plot in the end
+                    plt.colorbar(cont1, ax=ax[0,2])
+                    plt.colorbar(cont2, ax=ax[1,2])
+                
+                # Draw
+                plt.draw()
+                plt.pause(0.01)
+                
+    plt.savefig(str(args.model) + '.pdf')
+    plt.show(block=True)
