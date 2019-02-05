@@ -20,7 +20,7 @@ class args:
     lr = 0.001
     batch_size = 2000
     n = 1000
-    n_epochs = 3000
+    n_epochs = 5000
     warmup = 1000
 
 #%%
@@ -32,7 +32,7 @@ if __name__ == '__main__':
     clusterAlg = AgglomerativeClustering(n_clusters=args.n_clust, linkage='single')
     clusterAlg.fit(X)
     labels = torch.tensor(clusterAlg.labels_)
-    
+
     class newvae(nn.Module):
         def __init__(self, ):
             super(newvae, self).__init__()
@@ -48,9 +48,12 @@ if __name__ == '__main__':
                                         nn.Linear(100, 2))
             self.cluster = nn.Sequential(nn.Linear(2, 100),
                                          nn.ReLU(),
+                                         nn.Linear(100, 100),
+                                         nn.ReLU(),
                                          nn.Linear(100, args.n_clust),
                                          nn.Softmax())
-        
+            self.cluster_loss = nn.NLLLoss(reduction='sum')
+            
         def encoder(self, x):
             return self.enc_mu(x), self.enc_std(x)
             
@@ -61,16 +64,18 @@ if __name__ == '__main__':
             return x_mu, switch*x_std + (1-switch)*torch.tensor(0.02**2)
             
         def forward(self, x, switch, labels):
-            z_mu, z_std = self.enc_mu(x), self.enc_std(x)
+            z_mu, z_std = self.encoder(x)
             q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
             z = q_dist.rsample()
             
-            x_mu = self.dec_mu(z)
-            prop = self.cluster(z)
-            
-            x_std = -(prop * prop.log()).sum(dim=1, keepdim=True)
-            x_std = switch*x_std + (1-switch)*torch.tensor(0.02**2)
-            nll_loss = nn.functional.nll_loss(prop, labels)
+            x_mu, x_std = self.decoder(z, switch)
+            if switch:
+                prop = self.cluster(z)
+                print(prop[:5], labels[:5])
+                print(prop[-5:], labels[-5:])
+                nll_loss = self.cluster_loss(prop.log(), labels)
+            else:
+                nll_loss = 0.0
             p_dist = D.Independent(D.Normal(x_mu, x_std), 1)
             
             prior = D.Independent(D.Normal(torch.zeros_like(z),
@@ -126,7 +131,7 @@ if __name__ == '__main__':
         loss, loss_recon, loss_kl = 0, 0, 0
         for i in range(n_batch):
             optimizer.zero_grad()
-            switch = 1.0 if args.n_epochs/2 < e else 0.0 
+            switch = 1.0 if 1000 < e else 0.0 
             # Forward pass
             x = X[i*args.batch_size:(i+1)*args.batch_size].to(device)
             y = labels[i*args.batch_size:(i+1)*args.batch_size].to(device)

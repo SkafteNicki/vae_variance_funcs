@@ -14,7 +14,7 @@ import os
 from urllib.request import urlretrieve
 
 #%%
-def two_moons(N=1000):
+def two_moons(N=1000, train=True):
     angle = 2*np.pi*np.random.uniform(0, 1/2, N)
     x = np.cos(angle) + 0.1*np.random.randn(N)
     y = np.sin(angle) + 0.1*np.random.randn(N)
@@ -26,7 +26,7 @@ def two_moons(N=1000):
     return torch.tensor(X).to(torch.float32), torch.tensor(y).to(torch.float32)
 
 #%%
-def mnist(path=None, train=True, onehot=False):
+def mnist(path=None, onehot=False, train=True):
     url = 'http://yann.lecun.com/exdb/mnist/'
     files = ['train-images-idx3-ubyte.gz',
              'train-labels-idx1-ubyte.gz',
