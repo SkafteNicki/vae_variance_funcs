@@ -87,27 +87,27 @@ class VAE_experimental(nn.Module):
             for coll in self.cont1.collections: self.ax[0,0].collections.remove(coll)
             self.cont1 = self.ax[0,0].contourf(z[:,0].reshape(100, 100),
                                              z[:,1].reshape(100, 100),
-                                             np.log(p1.sum(axis=1)).reshape(100, 100))
+                                             np.log(p1.sum(axis=1)).reshape(100, 100), 50)
             for coll in self.cont2.collections: self.ax[0,1].collections.remove(coll)
             self.cont2 = self.ax[0,1].contourf(z[:,0].reshape(100, 100),
                                              z[:,1].reshape(100, 100),
-                                             np.log(p2.sum(axis=1)).reshape(100, 100))
+                                             np.log(p2.sum(axis=1)).reshape(100, 100), 50)
             for coll in self.cont3.collections: self.ax[0,2].collections.remove(coll)
             self.cont3 = self.ax[0,2].contourf(z[:,0].reshape(100, 100),
                                              z[:,1].reshape(100, 100),
-                                             np.log(p3.sum(axis=1)).reshape(100, 100))
+                                             np.log(p3.sum(axis=1)).reshape(100, 100), 50)
             for coll in self.cont4.collections: self.ax[1,0].collections.remove(coll)
             self.cont4 = self.ax[1,0].contourf(z[:,0].reshape(100, 100),
                                              z[:,1].reshape(100, 100),
-                                             np.log(p4.sum(axis=1)).reshape(100, 100))
+                                             np.log(p4.sum(axis=1)).reshape(100, 100), 50)
             for coll in self.cont5.collections: self.ax[1,1].collections.remove(coll)
             self.cont5 = self.ax[1,1].contourf(z[:,0].reshape(100, 100),
                                              z[:,1].reshape(100, 100),
-                                             np.log(p5.sum(axis=1)).reshape(100, 100))
+                                             np.log(p5.sum(axis=1)).reshape(100, 100), 50)
             for coll in self.cont6.collections: self.ax[1,2].collections.remove(coll)
             self.cont6 = self.ax[1,2].contourf(z[:,0].reshape(100, 100),
                                              z[:,1].reshape(100, 100),
-                                             np.log(p6.sum(axis=1)).reshape(100, 100))
+                                             np.log(p6.sum(axis=1)).reshape(100, 100), 50)
             self.fig.canvas.draw()
             plt.pause(0.01)
             
