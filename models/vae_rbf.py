@@ -37,7 +37,7 @@ class VAE_rbf(nn.Module):
         self.W = nn.Parameter(torch.rand(30,2))
         #self.lamb = 5
         self.alpha = nn.Parameter(torch.rand(30,)+10)
-        self.lamb = nn.Parameter(5*torch.rand(30,)+5)
+        self.lamb = nn.Parameter(10*torch.rand(30,)+50)
     
     def encoder(self, x):
         return self.enc_mu(x), self.enc_std(x)
@@ -46,6 +46,8 @@ class VAE_rbf(nn.Module):
         x_mu = self.dec_mu(z)
         kernel = (self.alpha**2)*torch.exp(-F.softplus(self.lamb) * dist(z, self.C))
         inv_std = torch.matmul(kernel, F.softplus(self.W)) + 1e-10
+        if switch:
+            print(1.0/inv_std)
         x_std = switch * (1.0/inv_std) + (1-switch)*torch.tensor(0.02**2)
         return x_mu, x_std
     
@@ -59,6 +61,10 @@ class VAE_rbf(nn.Module):
         x_mu, x_std = self.decoder(z, switch)
         p_dist = D.Independent(D.Normal(x_mu, x_std), 1) 
         
+        if switch:
+            dist_loss = dist(z, self.C).min(dim=1)[0].mean()
+        else:
+            dist_loss = 0
         # Calculate loss
         prior = D.Independent(D.Normal(torch.zeros_like(z),
                                        torch.ones_like(z)), 1)
@@ -67,4 +73,4 @@ class VAE_rbf(nn.Module):
         elbo = (log_px - beta*kl).mean()
         iw_elbo = elbo.logsumexp(dim=0) - torch.tensor(float(iw_samples)).log()
         
-        return iw_elbo.mean(), log_px.mean(), kl.mean(), x_mu[0], x_std[0], z[0], z_mu, z_std
+        return iw_elbo.mean() - dist_loss, log_px.mean(), kl.mean(), x_mu[0], x_std[0], z[0], z_mu, z_std
