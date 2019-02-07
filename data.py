@@ -26,7 +26,7 @@ def two_moons(N=1000, train=True):
     return torch.tensor(X).to(torch.float32), torch.tensor(y).to(torch.float32)
 
 #%%
-def mnist(path=None, onehot=False, train=True):
+def mnist(N = 10000, train=True, path=None):
     url = 'http://yann.lecun.com/exdb/mnist/'
     files = ['train-images-idx3-ubyte.gz',
              'train-labels-idx1-ubyte.gz',
@@ -58,23 +58,29 @@ def mnist(path=None, onehot=False, train=True):
             # First 8 bytes are magic_number, n_labels
             integer_labels = np.frombuffer(f.read(), 'B', offset=8)
 
-        def _onehot(integer_labels):
-            """Return matrix whose rows are onehot encodings of integers."""
-            n_rows = len(integer_labels)
-            n_cols = integer_labels.max() + 1
-            onehot = np.zeros((n_rows, n_cols), dtype='uint8')
-            onehot[np.arange(n_rows), integer_labels] = 1
-            return onehot
-        if onehot:
-            return _onehot(integer_labels)
-        else:
-            return integer_labels
+        return integer_labels
 
     train_images = _images(os.path.join(path, files[0]))
     train_labels = _labels(os.path.join(path, files[1]))
     test_images = _images(os.path.join(path, files[2]))
     test_labels = _labels(os.path.join(path, files[3]))
+    
     if train:
-        return torch.tensor(train_images), torch.tensor(train_labels)
+        data = torch.tensor(train_images)
+        targets = torch.tensor(train_labels)
     else:
-        return torch.tensor(test_images), torch.tensor(test_labels)
+        data = torch.tensor(test_images)
+        targets = torch.tensor(test_labels)
+    
+    # Extract N points pr class
+    newdata, newtargets = [ ], [ ]
+    counter = 10 * [0]
+    for x, y in zip(data, targets):
+        if counter[y] < N:
+            newdata.append(x)
+            newtargets.append(y)
+            counter[y] += 1
+    data = torch.stack(newdata, dim=0)
+    targets = torch.stack(newtargets, dim=0)
+    
+    return data, targets

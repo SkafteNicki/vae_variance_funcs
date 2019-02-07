@@ -10,6 +10,7 @@ Created on Tue Jan 29 10:24:35 2019
 import torch
 from torch import nn
 from torch import distributions as D
+from callbacks import callback_default, callback_moons
 
 #%%
 class VAE_diag_base(nn.Module):
@@ -17,6 +18,7 @@ class VAE_diag_base(nn.Module):
         super(VAE_diag_base, self).__init__()
         self.switch = 0.0
         self.lr = lr
+        self.callback = callback_default()
         
     def init_optim(self):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -73,4 +75,4 @@ class VAE_diag_moons(VAE_diag_base):
                                      nn.ReLU(),
                                      nn.Linear(100, 1),
                                      nn.Softplus())
-        self.init_optim()
+        self.callback = callback_moons()

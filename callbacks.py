@@ -11,6 +11,17 @@ import numpy as np
 import torch
 
 #%%
+class callback_default(object):
+    def __init__(self):
+        pass
+    
+    def update(self, X, model, device, labels=None):
+        pass
+    
+    def write(self, writer, epoch, label='cb'):
+        pass
+    
+#%%
 class callback_moons(object):
     def __init__(self):
         # Create figure and axis handles
@@ -20,7 +31,7 @@ class callback_moons(object):
         self.fig4, self.ax4 = plt.subplots()
         self.fig5, self.ax5 = plt.subplots()
         
-    def __call__(self, X, model, writer, device, epoch, label='cb', labels=None):
+    def update(self, X, model, device, labels=None):
         # Extract latent codes and reconstrutions
         N = X.shape[0]
         n_batch = int(np.ceil(N/100))
@@ -45,11 +56,11 @@ class callback_moons(object):
         _, x_std = model.decoder(torch.tensor(grid2).to(torch.float32).to(device))
         x_std = x_std.cpu().numpy()
         
-        # Clear plots
-        self.ax1.clear()
-        self.ax2.clear()
-        self.ax3.clear()
-        self.ax4.clear()
+         # Clear plots 
+        self.ax1.clear() 
+        self.ax2.clear() 
+        self.ax3.clear() 
+        self.ax4.clear() 
         self.ax5.clear()
         
         # Data plot
@@ -63,9 +74,32 @@ class callback_moons(object):
                           grid2[:,1].reshape(100, 100),
                           x_std.sum(axis=1).reshape(100, 100), 50)
         
+    def write(self, writer, epoch, label='cb'):
         # Write to tensorboard
         writer.add_figure(label+'/data', self.fig1, epoch)
         writer.add_figure(label+'/reconstruction', self.fig2, epoch)
         writer.add_figure(label+'/latent_space', self.fig3, epoch)
         writer.add_figure(label+'/encoder_std', self.fig4, epoch)
         writer.add_figure(label+'/decoder_std', self.fig5, epoch)
+
+#%%      
+class callback_moons_rbf(callback_moons):
+    def update(self, X, model, device, labels=None):
+        super(callback_moons_rbf, self).update(X, model, device, labels)
+        # update figure 3 with clusters
+        C = model.C.cpu().numpy()
+        self.ax3.plot(C[:,0], C[:,1], 'g*')
+        
+#%%
+class callback_moons_ed(callback_moons):
+    def __init__(self):
+        super(self, callback_moons_ed).__init__()
+        self.fig6, self.ax6 = plt.subplots()
+        
+    def update(self, X, model, device, labels=None):
+        super(self, callback_moons_ed).update(X, model, device, labels)
+        
+    def write(self, writer, epoch, label='cb'):
+        super(self, callback_moons_ed).write(writer, epoch, label)
+        writer.add_figure(label + '/diff', self.fig6, epoch)
+        

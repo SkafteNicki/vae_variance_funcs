@@ -10,6 +10,7 @@ Created on Tue Jan 29 10:24:43 2019
 import torch
 from torch import nn
 from torch import distributions as D
+from callbacks import callback_default, callback_moons
 
 #%%
 class singleStd(nn.Module):
@@ -27,6 +28,7 @@ class VAE_single_base(nn.Module):
         super(VAE_single_base, self).__init__()
         self.switch = 0.0
         self.lr = lr
+        self.callback = callback_default()
         
     def init_optim(self):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -68,7 +70,7 @@ class VAE_single_base(nn.Module):
 #%%
 class VAE_single_moons(VAE_single_base):
     def __init__(self, lr):
-        super(VAE_single_base, self).__init__(lr=lr)
+        super(VAE_single_moons, self).__init__(lr=lr)
         self.enc_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
                                     nn.Linear(100, 2))
@@ -81,4 +83,4 @@ class VAE_single_moons(VAE_single_base):
                                     nn.Linear(100, 2))
         self.dec_std = nn.Sequential(singleStd(2),
                                      nn.Softplus())
-        self.init_optim()
+        self.callback = callback_moons()

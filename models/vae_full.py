@@ -10,13 +10,15 @@ Created on Tue Jan 29 10:24:24 2019
 import torch
 from torch import nn
 from torch import distributions as D 
-    
+from callbacks import callback_default, callback_moons
+
 #%%
 class VAE_full_base(nn.Module):
     def __init__(self, lr):
         super(VAE_full_base, self).__init__()
         self.switch = 0.0
         self.lr = lr
+        self.callback = callback_default()
         
     def init_optim(self):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -73,31 +75,4 @@ class VAE_full_moons(VAE_full_base):
                                      nn.ReLU(), 
                                      nn.Linear(100, 2), 
                                      nn.Softplus())
-        self.init_optim()
-        
-#%%
-class VAE_full_mnist(VAE_full_base):
-    def __init__(self, ):
-        super(VAE_full_mnist, self).__init__()
-        self.enc_mu = nn.Sequential(nn.Linear(784, 256), 
-                                    nn.ReLU(), 
-                                    nn.Linear(256, 128),
-                                    nn.ReLU(),
-                                    nn.Linear(128, 2))
-        self.enc_std = nn.Sequential(nn.Linear(784, 256), 
-                                    nn.ReLU(), 
-                                    nn.Linear(256, 128),
-                                    nn.ReLU(),
-                                    nn.Linear(128, 2),
-                                    nn.Softplus())
-        self.dec_mu = nn.Sequential(nn.Linear(2, 128), 
-                                    nn.ReLU(), 
-                                    nn.Linear(128, 256),
-                                    nn.ReLU(),
-                                    nn.Linear(256, 784))
-        self.dec_std = nn.Sequential(nn.Linear(2, 128), 
-                                    nn.ReLU(), 
-                                    nn.Linear(128, 256),
-                                    nn.ReLU(),
-                                    nn.Linear(256, 784))
-        self.init_optim()
+        self.callback = callback_moons()

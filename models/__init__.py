@@ -6,6 +6,11 @@ Created on Tue Jan 29 10:23:55 2019
 @author: nsde
 """
 
+#%%
+import sys
+sys.path.append("..")
+
+#%%
 def get_model(model_name):
     import os
     import importlib
@@ -17,7 +22,7 @@ def get_model(model_name):
         i = importlib.import_module('.' + file[:-3], package='models')
         modules = dir(i)
         for m in modules:
-            if 'VAE' in m:
+            if 'VAE' in m and '_base' not in m:
                 models[m.lower()] = getattr(i, m)
                 
     assert model_name in models, 'Model "' + model_name + '" not found, choose between: ' \

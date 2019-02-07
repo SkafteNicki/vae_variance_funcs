@@ -10,9 +10,9 @@ Created on Tue Jan 29 10:30:36 2019
 import argparse, datetime
 
 from models import get_model
-from data import two_moons
+from data import two_moons, mnist
 from training import Trainer
-from callbacks import callback_moons
+
 #%%
 def argparser():
     """ Argument parser for the main script """
@@ -59,8 +59,10 @@ if __name__ == '__main__':
         Xtrain, ytrain = two_moons(args.n, train=True)
         Xtest, ytest = two_moons(int(args.n/2), train=False)
         input_shape = (2,)
-        callback = callback_moons()
     else:
+        Xtrain, ytrain = mnist(args.n, train=True)
+        Xtest, ytest = mnist(args.n, train=False)
+        input_shape = (784,)
         raise ValueError('unknown dataset')
     
     # Construct models
@@ -74,4 +76,4 @@ if __name__ == '__main__':
     T.fit(Xtrain=Xtrain, n_epochs=args.n_epochs, batch_size=args.batch_size,
           warmup=args.warmup, beta=args.beta, iw_samples=args.iw_samples,
           logdir=logdir, ytrain=ytrain, Xtest=Xtest, ytest=ytest, 
-          callback=callback, log_epoch=args.log_epoch) 
+          log_epoch=args.log_epoch) 
