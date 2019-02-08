@@ -45,8 +45,6 @@ class VAE_rbf_base(nn.Module):
         kernel = (self.alpha**2)*torch.exp(-F.softplus(self.lamb) * dist(z, self.C))
         inv_std = torch.matmul(kernel, F.softplus(self.W)) + 1e-10
         x_std = self.switch * (1.0/inv_std) + (1-self.switch)*torch.tensor(0.02**2)
-        if self.switch==1.0:
-            print(x_std)
         return x_mu, x_std
     
     def forward(self, x, beta=1.0, iw_samples=1):
@@ -59,6 +57,10 @@ class VAE_rbf_base(nn.Module):
         x_mu, x_std = self.decoder(z)
         p_dist = D.Independent(D.Normal(x_mu, x_std), 1) 
         
+        if self.switch: # secure that clusters are always close to latent points
+            dist_loss = dist(z, self.C).min(dim=1)[0].mean()
+        else:
+            dist_loss = 0
         # Calculate loss
         prior = D.Independent(D.Normal(torch.zeros_like(z),
                                        torch.ones_like(z)), 1)
@@ -67,7 +69,7 @@ class VAE_rbf_base(nn.Module):
         elbo = (log_px - beta*kl).mean()
         iw_elbo = elbo.logsumexp(dim=0) - torch.tensor(float(iw_samples)).log()
         
-        return iw_elbo.mean(), log_px.mean(), kl.mean(), x_mu[0], x_std[0], z[0], z_mu, z_std
+        return iw_elbo.mean() - dist_loss, log_px.mean(), kl.mean(), x_mu[0], x_std[0], z[0], z_mu, z_std
     
 #%%
 class VAE_rbf_moons(VAE_rbf_base):
@@ -86,6 +88,6 @@ class VAE_rbf_moons(VAE_rbf_base):
         self.C = nn.Parameter(torch.randn(30, 2))
         self.W = nn.Parameter(torch.rand(30,2))
         self.alpha = nn.Parameter(torch.rand(30,)+10)
-        self.lamb = nn.Parameter(5*torch.rand(30,)+5)
+        self.lamb = nn.Parameter(10*torch.rand(30,)+100)
         
         self.callback = callback_moons_rbf()

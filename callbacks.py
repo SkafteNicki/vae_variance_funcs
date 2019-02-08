@@ -25,11 +25,11 @@ class callback_default(object):
 class callback_moons(object):
     def __init__(self):
         # Create figure and axis handles
-        self.fig1, self.ax1 = plt.subplots()
-        self.fig2, self.ax2 = plt.subplots()
-        self.fig3, self.ax3 = plt.subplots()
-        self.fig4, self.ax4 = plt.subplots()
-        self.fig5, self.ax5 = plt.subplots()
+        self.fig1 = plt.figure()
+        self.fig2 = plt.figure()
+        self.fig3 = plt.figure()
+        self.fig4 = plt.figure()
+        self.fig5 = plt.figure()
         
     def update(self, X, model, device, labels=None):
         # Extract latent codes and reconstrutions
@@ -56,23 +56,25 @@ class callback_moons(object):
         _, x_std = model.decoder(torch.tensor(grid2).to(torch.float32).to(device))
         x_std = x_std.cpu().numpy()
         
-         # Clear plots 
-        self.ax1.clear() 
-        self.ax2.clear() 
-        self.ax3.clear() 
-        self.ax4.clear() 
-        self.ax5.clear()
+        # Clear plots 
+        self.fig1.clear(); self.ax1 = self.fig1.add_subplot(111) 
+        self.fig2.clear(); self.ax2 = self.fig2.add_subplot(111) 
+        self.fig3.clear(); self.ax3 = self.fig3.add_subplot(111) 
+        self.fig4.clear(); self.ax4 = self.fig4.add_subplot(111) 
+        self.fig5.clear(); self.ax5 = self.fig5.add_subplot(111) 
         
         # Data plot
         self.ax1.scatter(X[:,0].numpy(), X[:,1].numpy(), c=labels.numpy())
         self.ax2.scatter(recon[:,0], recon[:,1], c=labels.numpy())
         self.ax3.scatter(latent[:,0], latent[:,1], c=labels.numpy())
-        self.ax4.contourf(grid[:,0].reshape(100, 100),
-                          grid[:,1].reshape(100, 100),
-                          z_std.sum(axis=1).reshape(100, 100), 50)
-        self.ax5.contourf(grid2[:,0].reshape(100, 100),
-                          grid2[:,1].reshape(100, 100),
-                          x_std.sum(axis=1).reshape(100, 100), 50)
+        cont = self.ax4.contourf(grid[:,0].reshape(100, 100),
+                                 grid[:,1].reshape(100, 100),
+                                 z_std.sum(axis=1).reshape(100, 100), 50) 
+        plt.colorbar(cont, ax=self.ax4)
+        cont = self.ax5.contourf(grid2[:,0].reshape(100, 100),
+                                 grid2[:,1].reshape(100, 100),
+                                 x_std.sum(axis=1).reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax5)
         
     def write(self, writer, epoch, label='cb'):
         # Write to tensorboard
@@ -94,10 +96,35 @@ class callback_moons_rbf(callback_moons):
 class callback_moons_ed(callback_moons):
     def __init__(self):
         super(self, callback_moons_ed).__init__()
-        self.fig6, self.ax6 = plt.subplots()
+        self.fig6 = plt.figure()
+        self.fig7 = plt.figure()
+        self.fig8 = plt.figure()
+        self.fig9 = plt.figure()
         
     def update(self, X, model, device, labels=None):
         super(self, callback_moons_ed).update(X, model, device, labels)
+        N = X.shape[0]
+        n_batch = int(np.ceil(N/100))
+        for i in range(n_batch):
+            x = X[i:100:(i+1)*100].to(device)
+            _, _, _, x_mu, _, z, _, _ = model(x, 1.0, 1)
+            z_hat, _ = model.encoder(x_mu)
+            diff1 = (z-z_hat).norm(dim=1, keepdim=True)
+            x_mu, _ = model.decoder(z_hat)
+            z_hat, _ = model.encoder(x_mu)
+            diff2 = (z-z_hat).norm(dim=1, keepdim=True)
+            x_mu, _ = model.decoder(z_hat)
+            z_hat, _ = model.encoder(x_mu)
+            diff3 = (z-z_hat).norm(dim=1, keepdim=True)
+            x_mu, _ = model.decoder(z_hat)
+            z_hat, _ = model.encoder(x_mu)
+            diff4 = (z-z_hat).norm(dim=1, keepdim=True)
+        
+        self.fig6.clear(); self.ax6 = self.fig6.add_subplot(111)
+        self.fig6.clear(); self.ax6 = self.fig6.add_subplot(111)
+        self.fig6.clear(); self.ax6 = self.fig6.add_subplot(111)
+        self.fig6.clear(); self.ax6 = self.fig6.add_subplot(111)
+        
         
     def write(self, writer, epoch, label='cb'):
         super(self, callback_moons_ed).write(writer, epoch, label)

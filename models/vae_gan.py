@@ -81,7 +81,22 @@ class VAE_gan_base(nn.Module):
 #%%
 class VAE_gan_moons(VAE_gan_base):
     def __init__(self, lr):
-        super(VAE_gan_moons, self).__init__()
-        
+        super(VAE_gan_moons, self).__init__(lr=lr)
+        self.enc_mu = nn.Sequential(nn.Linear(2, 20), 
+                                    nn.ReLU(), 
+                                    nn.Linear(20, 2))
+        self.enc_std = nn.Sequential(nn.Linear(2, 20), 
+                                     nn.ReLU(), 
+                                     nn.Linear(20, 2), 
+                                     nn.Softplus())
+        self.dec_mu = nn.Sequential(nn.Linear(2, 20), 
+                                    nn.ReLU(), 
+                                    nn.Linear(20, 2))
+        self.adverserial = nn.Sequential(nn.Linear(2, 100),
+                                         nn.ReLU(),
+                                         nn.Linear(100, 1),
+                                         nn.Sigmoid())
+        self.dec_std = nn.Sequential(nn.Linear(1, 2),
+                                     nn.Softplus())
         
         self.callback = callback_moons()
