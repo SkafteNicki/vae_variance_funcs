@@ -37,13 +37,13 @@ class VAE_gan_base(nn.Module):
         else:
             self.optimizer2.step()
     
+    def encoder(self, x):
+        return self.enc_mu(x), self.enc_std(x)
+    
     def decoder(self, z):
         x_mu = self.dec_mu(z)
-        
         prop = self.adverserial(x_mu)
-        x_std = 1.0 / (prop+1e-6)
-        
-        return x_mu, self.switch*self.dec_std(x_std)+(1-self.switch)*torch.tensor(0.02**2)
+        return x_mu, self.switch*self.dec_std(prop)+(1-self.switch)*torch.tensor(0.02**2)
     
     def forward(self, x, beta=1.0, iw_samples=1):
         # Encoder step
@@ -55,17 +55,16 @@ class VAE_gan_base(nn.Module):
         x_mu, x_std = self.decoder(z)
         
         if self.switch:
-            valid = torch.zeros((x.shape[0], 1), device = x.device)
+            valid = torch.zeros((x.shape[0], 1), device = x.device) 
             fake = torch.ones((x.shape[0], 1), device = x.device)
             labels = torch.cat([valid, fake[::2]], dim=0)
             x_cat = torch.cat([x, x_mu[0][::2]], dim=0)
-            
             prop = self.adverserial(x_cat)
             advert_loss = F.binary_cross_entropy(prop, labels, reduction='sum')
             x_std = self.dec_std(prop)
         else:
             advert_loss = 0
-        
+
         p_dist = D.Independent(D.Normal(x_mu[0], x_std[:x.shape[0]]), 1)
         
         # Calculate loss
@@ -76,23 +75,27 @@ class VAE_gan_base(nn.Module):
         elbo = (log_px - beta*kl).mean()
         iw_elbo = elbo.logsumexp(dim=0) - torch.tensor(float(iw_samples)).log()
         
-        return iw_elbo.mean() - advert_loss, log_px.mean(), kl.mean(), x_mu[0], x_std, z[0], z_mu, z_std
+        return iw_elbo.mean() - advert_loss, log_px.mean(), kl.mean(), x_mu, x_std, z, z_mu, z_std
     
 #%%
 class VAE_gan_moons(VAE_gan_base):
     def __init__(self, lr):
         super(VAE_gan_moons, self).__init__(lr=lr)
-        self.enc_mu = nn.Sequential(nn.Linear(2, 20), 
+        self.enc_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
-                                    nn.Linear(20, 2))
-        self.enc_std = nn.Sequential(nn.Linear(2, 20), 
+                                    nn.Linear(100, 2))
+        self.enc_std = nn.Sequential(nn.Linear(2, 100), 
                                      nn.ReLU(), 
-                                     nn.Linear(20, 2), 
+                                     nn.Linear(100, 2), 
                                      nn.Softplus())
-        self.dec_mu = nn.Sequential(nn.Linear(2, 20), 
+        self.dec_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
-                                    nn.Linear(20, 2))
+                                    nn.Linear(100, 2))
         self.adverserial = nn.Sequential(nn.Linear(2, 100),
+                                         nn.ReLU(),
+                                         nn.Linear(100, 100),
+                                         nn.ReLU(),
+                                         nn.Linear(100, 100),
                                          nn.ReLU(),
                                          nn.Linear(100, 1),
                                          nn.Sigmoid())

@@ -69,7 +69,7 @@ class VAE_rbf_base(nn.Module):
         elbo = (log_px - beta*kl).mean()
         iw_elbo = elbo.logsumexp(dim=0) - torch.tensor(float(iw_samples)).log()
         
-        return iw_elbo.mean() - dist_loss, log_px.mean(), kl.mean(), x_mu[0], x_std[0], z[0], z_mu, z_std
+        return iw_elbo.mean() - dist_loss, log_px.mean(), kl.mean(), x_mu, x_std, z, z_mu, z_std
     
 #%%
 class VAE_rbf_moons(VAE_rbf_base):
@@ -88,6 +88,6 @@ class VAE_rbf_moons(VAE_rbf_base):
         self.C = nn.Parameter(torch.randn(30, 2))
         self.W = nn.Parameter(torch.rand(30,2))
         self.alpha = nn.Parameter(torch.rand(30,)+10)
-        self.lamb = nn.Parameter(10*torch.rand(30,)+100)
+        self.lamb = nn.Parameter(10*torch.rand(30,)+200)
         
         self.callback = callback_moons_rbf()

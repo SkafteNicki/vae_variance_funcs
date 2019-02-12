@@ -55,7 +55,7 @@ class VAE_full_base(nn.Module):
         elbo = (log_px - beta*kl)
         iw_elbo = elbo.logsumexp(dim=0) - torch.tensor(float(iw_samples)).log()
         
-        return iw_elbo.mean(), log_px.mean(), kl.mean(), x_mu[0], x_std[0], z[0], z_mu, z_std
+        return iw_elbo.mean(), log_px.mean(), kl.mean(), x_mu, x_std, z, z_mu, z_std
 
 #%%
 class VAE_full_moons(VAE_full_base):

@@ -112,6 +112,6 @@ class Trainer(object):
                     if Xtest is not None:
                         # Test set
                         self.model.callback.update(Xtest, self.model, self.device, labels=ytest)
-                        self.model.callback.write(writer, epoch, 'train')
+                        self.model.callback.write(writer, epoch, 'test')
             
         print('Total train time:', time.time() - start)

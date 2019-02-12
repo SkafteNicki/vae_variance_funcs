@@ -41,7 +41,7 @@ class callback_moons(object):
             x = X[i*100:(i+1)*100].to(device)
             _, _, _, x_mu, _, _, z_mu, _ = model(x, 1.0, 1)
             latent[i*100:(i+1)*100] = z_mu.cpu().numpy()
-            recon[i*100:(i+1)*100] = x_mu.cpu().numpy()
+            recon[i*100:(i+1)*100] = x_mu[0].cpu().numpy()
             
         # Forward grid to calculate std's
         grid = np.stack([array.flatten() for array in np.meshgrid(
@@ -63,7 +63,7 @@ class callback_moons(object):
         self.fig4.clear(); self.ax4 = self.fig4.add_subplot(111) 
         self.fig5.clear(); self.ax5 = self.fig5.add_subplot(111) 
         
-        # Data plot
+        # Make figures
         self.ax1.scatter(X[:,0].numpy(), X[:,1].numpy(), c=labels.numpy())
         self.ax2.scatter(recon[:,0], recon[:,1], c=labels.numpy())
         self.ax3.scatter(latent[:,0], latent[:,1], c=labels.numpy())
@@ -95,38 +95,129 @@ class callback_moons_rbf(callback_moons):
 #%%
 class callback_moons_ed(callback_moons):
     def __init__(self):
-        super(self, callback_moons_ed).__init__()
+        super(callback_moons_ed, self).__init__()
         self.fig6 = plt.figure()
         self.fig7 = plt.figure()
         self.fig8 = plt.figure()
         self.fig9 = plt.figure()
+        self.fig10 = plt.figure()
+        self.fig11 = plt.figure()
+        self.fig12 = plt.figure()
+        self.fig13 = plt.figure()
+        self.fig14 = plt.figure()
+        self.fig15 = plt.figure()
+        self.fig16 = plt.figure()
+        self.fig17 = plt.figure()
         
     def update(self, X, model, device, labels=None):
-        super(self, callback_moons_ed).update(X, model, device, labels)
-        N = X.shape[0]
-        n_batch = int(np.ceil(N/100))
-        for i in range(n_batch):
-            x = X[i:100:(i+1)*100].to(device)
-            _, _, _, x_mu, _, z, _, _ = model(x, 1.0, 1)
-            z_hat, _ = model.encoder(x_mu)
-            diff1 = (z-z_hat).norm(dim=1, keepdim=True)
+        super(callback_moons_ed, self).update(X, model, device, labels)
+
+        z = np.stack([array.flatten() for array in np.meshgrid(
+                      np.linspace(-5, 5, 100),
+                      np.linspace(-5, 5, 100))]).T
+        z = torch.tensor(z).to(torch.float32).to(device)
+        x_mu, _ = model.decoder(z)
+        z_hat, _ = model.encoder(x_mu)
+        diff1 = (z-z_hat).norm(dim=-1, keepdim=True).cpu().numpy()
+        vec = (z-z_hat).cpu().numpy() # vector field
+        x_mu, _ = model.decoder(z_hat)
+        z_hat, _ = model.encoder(x_mu)
+        diff2 = (z-z_hat).norm(dim=-1, keepdim=True).cpu().numpy()
+        x_mu, _ = model.decoder(z_hat)
+        z_hat, _ = model.encoder(x_mu)
+        diff3 = (z-z_hat).norm(dim=-1, keepdim=True).cpu().numpy()
+        x_mu, _ = model.decoder(z_hat)
+        z_hat, _ = model.encoder(x_mu)
+        diff4 = (z-z_hat).norm(dim=-1, keepdim=True).cpu().numpy()
+        x_mu, _ = model.decoder(z_hat)
+        z_hat, _ = model.encoder(x_mu)
+        diff5 = (z-z_hat).norm(dim=-1, keepdim=True).cpu().numpy()
+        x_mu, _ = model.decoder(z_hat)
+        z_hat, _ = model.encoder(x_mu)
+        diff6 = (z-z_hat).norm(dim=-1, keepdim=True).cpu().numpy()
+        x_mu, _ = model.decoder(z_hat)
+        z_hat, _ = model.encoder(x_mu)
+        diff7 = (z-z_hat).norm(dim=-1, keepdim=True).cpu().numpy()
+        x_mu, _ = model.decoder(z_hat)
+        z_hat, _ = model.encoder(x_mu)
+        diff8 = (z-z_hat).norm(dim=-1, keepdim=True).cpu().numpy()
+        x_mu, _ = model.decoder(z_hat)
+        z_hat, _ = model.encoder(x_mu)
+        diff9 = (z-z_hat).norm(dim=-1, keepdim=True).cpu().numpy()
+        x_mu, _ = model.decoder(z_hat)
+        z_hat, _ = model.encoder(x_mu)
+        diff10 = (z-z_hat).norm(dim=-1, keepdim=True).cpu().numpy()
+        for _ in range(90):
             x_mu, _ = model.decoder(z_hat)
             z_hat, _ = model.encoder(x_mu)
-            diff2 = (z-z_hat).norm(dim=1, keepdim=True)
-            x_mu, _ = model.decoder(z_hat)
-            z_hat, _ = model.encoder(x_mu)
-            diff3 = (z-z_hat).norm(dim=1, keepdim=True)
-            x_mu, _ = model.decoder(z_hat)
-            z_hat, _ = model.encoder(x_mu)
-            diff4 = (z-z_hat).norm(dim=1, keepdim=True)
+        diff100 = (z-z_hat).norm(dim=-1, keepdim=True).cpu().numpy()
         
-        self.fig6.clear(); self.ax6 = self.fig6.add_subplot(111)
-        self.fig6.clear(); self.ax6 = self.fig6.add_subplot(111)
-        self.fig6.clear(); self.ax6 = self.fig6.add_subplot(111)
-        self.fig6.clear(); self.ax6 = self.fig6.add_subplot(111)
+        z = z.cpu().numpy()
         
+        # Clear plots
+        self.fig6.clear(); self.ax6 = self.fig6.add_subplot(111)
+        self.fig7.clear(); self.ax7 = self.fig7.add_subplot(111)
+        self.fig8.clear(); self.ax8 = self.fig8.add_subplot(111)
+        self.fig9.clear(); self.ax9 = self.fig9.add_subplot(111)
+        self.fig10.clear(); self.ax10 = self.fig10.add_subplot(111)
+        self.fig11.clear(); self.ax11 = self.fig11.add_subplot(111)
+        self.fig12.clear(); self.ax12 = self.fig12.add_subplot(111)
+        self.fig13.clear(); self.ax13 = self.fig13.add_subplot(111)
+        self.fig14.clear(); self.ax14 = self.fig14.add_subplot(111)
+        self.fig15.clear(); self.ax15 = self.fig15.add_subplot(111)
+        self.fig16.clear(); self.ax16 = self.fig16.add_subplot(111)
+        self.fig17.clear(); self.ax17 = self.fig17.add_subplot(111)
+        
+        # Make figures
+        cont = self.ax6.contourf(z[:,0].reshape(100, 100), z[:,1].reshape(100,100),
+                                 diff1.reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax6)
+        cont = self.ax7.contourf(z[:,0].reshape(100, 100), z[:,1].reshape(100,100),
+                                 diff2.reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax7)
+        cont = self.ax8.contourf(z[:,0].reshape(100, 100), z[:,1].reshape(100,100),
+                                 diff3.reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax8)
+        cont = self.ax9.contourf(z[:,0].reshape(100, 100), z[:,1].reshape(100,100),
+                                 diff4.reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax9)
+        cont = self.ax10.contourf(z[:,0].reshape(100, 100), z[:,1].reshape(100,100),
+                                 diff5.reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax10)
+        cont = self.ax11.contourf(z[:,0].reshape(100, 100), z[:,1].reshape(100,100),
+                                 diff6.reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax11)
+        cont = self.ax12.contourf(z[:,0].reshape(100, 100), z[:,1].reshape(100,100),
+                                 diff7.reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax12)
+        cont = self.ax13.contourf(z[:,0].reshape(100, 100), z[:,1].reshape(100,100),
+                                 diff8.reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax13)
+        cont = self.ax14.contourf(z[:,0].reshape(100, 100), z[:,1].reshape(100,100),
+                                 diff9.reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax14)
+        cont = self.ax15.contourf(z[:,0].reshape(100, 100), z[:,1].reshape(100,100),
+                                 diff10.reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax15)
+        cont = self.ax16.contourf(z[:,0].reshape(100, 100), z[:,1].reshape(100,100),
+                                 diff100.reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax16)
+
+        self.ax17.quiver(z[::4,0].reshape(50, 50), z[::4,1].reshape(50, 50),
+                         vec[::4,0].reshape(50, 50), vec[::4,1].reshape(50, 50))
         
     def write(self, writer, epoch, label='cb'):
-        super(self, callback_moons_ed).write(writer, epoch, label)
-        writer.add_figure(label + '/diff', self.fig6, epoch)
+        super(callback_moons_ed, self).write(writer, epoch, label)
+        writer.add_figure(label + '/diff1', self.fig6, epoch)
+        writer.add_figure(label + '/diff2', self.fig7, epoch)
+        writer.add_figure(label + '/diff3', self.fig8, epoch)
+        writer.add_figure(label + '/diff4', self.fig9, epoch)
+        writer.add_figure(label + '/diff5', self.fig10, epoch)
+        writer.add_figure(label + '/diff6', self.fig11, epoch)
+        writer.add_figure(label + '/diff7', self.fig12, epoch)
+        writer.add_figure(label + '/diff8', self.fig13, epoch)
+        writer.add_figure(label + '/diff9', self.fig14, epoch)
+        writer.add_figure(label + '/diff10', self.fig15, epoch)
+        writer.add_figure(label + '/diff100', self.fig16, epoch)
+        writer.add_figure(label + '/quiver1', self.fig17, epoch)
         
