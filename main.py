@@ -21,7 +21,6 @@ def argparser():
     ms = parser.add_argument_group('Model settings')
     ms.add_argument('--model', type=str, default='vae_full', help='model to train')
     ms.add_argument('--beta', type=float, default=1.0, help='weighting of KL term')
-    ms.add_argument('--switch_epoch', type=int, default=None, help='when to switch on variance network, default n_epochs/2')
     
     # Training settings
     ts = parser.add_argument_group('Training settings')
@@ -31,6 +30,7 @@ def argparser():
     ts.add_argument('--lr', type=float, default=1e-3, help='learning rate for adam optimizer')
     ts.add_argument('--iw_samples', type=int, default=1, help='number of importance weighted samples')
     ts.add_argument('--log_epoch', type=int, default=100, help='how many epochs to pass before calling the callback')
+    ts.add_argument('--switch_epoch', type=int, default=None, help='when to switch on variance network, default n_epochs/2')
     
     # Dataset settings
     ds = parser.add_argument_group('Dataset settings')

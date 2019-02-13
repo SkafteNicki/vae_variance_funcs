@@ -12,15 +12,6 @@ from torch.nn import functional as F
 from callbacks import callback_default, callback_moons
 from itertools import chain
 
-class ownlinear(nn.Module):
-    def __init__(self,):
-        super(ownlinear, self).__init__()
-        self.a = nn.Parameter(torch.rand(2,))
-        self.b = nn.Parameter(torch.rand(2,))
-        
-    def forward(self, x):
-        return nn.functional.softplus(self.a) * x + nn.functional.softplus(self.b)
-
 #%%
 class VAE_gan_base(nn.Module):
     def __init__(self, lr):
@@ -62,19 +53,18 @@ class VAE_gan_base(nn.Module):
         
         # Decoder step
         x_mu, x_std = self.decoder(z)
-        
         if self.switch:
-            valid = -0.3*torch.rand((x.shape[0], 1), device = x.device) + 0.3
-            fake = -0.3*torch.rand((x.shape[0], 1), device = x.device)+ 1.0
+            valid = torch.zeros((x.shape[0], 1), device = x.device)
+            fake = torch.ones((x.shape[0], 1), device = x.device)
             labels = torch.cat([valid, fake], dim=0)
-            x_cat = torch.cat([x, x_mu[0]], dim=0)
+            x_cat = torch.cat([x.repeat(iw_samples, 1, 1), x_mu], dim=1)
             prop = self.adverserial(x_cat)
-            advert_loss = F.binary_cross_entropy(prop, labels, reduction='sum')
-            x_std = self.dec_std(prop)
+            advert_loss = F.binary_cross_entropy(prop, labels.repeat(iw_samples, 1, 1), 
+                                                 reduction='sum')
+            x_std = self.dec_std(prop[:,:x.shape[0]])
         else:
             advert_loss = 0
-
-        p_dist = D.Independent(D.Normal(x_mu[0], x_std[:x.shape[0]]), 1)
+        p_dist = D.Independent(D.Normal(x_mu, x_std), 1)
         
         # Calculate loss
         prior = D.Independent(D.Normal(torch.zeros_like(z),
@@ -90,22 +80,23 @@ class VAE_gan_base(nn.Module):
 class VAE_gan_moons(VAE_gan_base):
     def __init__(self, lr):
         super(VAE_gan_moons, self).__init__(lr=lr)
-        self.enc_mu = nn.Sequential(nn.Linear(2, 100), 
+        self.enc_mu = nn.Sequential(nn.Linear(2, 20), 
                                     nn.ReLU(), 
-                                    nn.Linear(100, 2))
-        self.enc_std = nn.Sequential(nn.Linear(2, 100), 
+                                    nn.Linear(20, 2))
+        self.enc_std = nn.Sequential(nn.Linear(2, 20), 
                                      nn.ReLU(), 
-                                     nn.Linear(100, 2), 
+                                     nn.Linear(20, 2), 
                                      nn.Softplus())
-        self.dec_mu = nn.Sequential(nn.Linear(2, 100), 
+        self.dec_mu = nn.Sequential(nn.Linear(2, 20), 
                                     nn.ReLU(), 
-                                    nn.Linear(100, 2))
+                                    nn.Linear(20, 2))
         self.adverserial = nn.Sequential(nn.Linear(2, 100),
                                          nn.LeakyReLU(),
                                          nn.Linear(100, 100),
                                          nn.LeakyReLU(),
                                          nn.Linear(100, 1),
                                          nn.Sigmoid())
-        self.dec_std = nn.Sequential(ownlinear())
+        self.dec_std = nn.Sequential(nn.Linear(1, 2),
+                                     nn.Softplus())
         
         self.callback = callback_moons()
