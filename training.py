@@ -27,7 +27,7 @@ class Trainer(object):
         
     def fit(self, Xtrain, n_epochs=10, warmup=1, batch_size=100, logdir=None, 
             iw_samples=1, beta=1.0, eval_epoch=10000, ytrain=None, 
-            Xtest=None, ytest=None, log_epoch=100):
+            Xtest=None, ytest=None, log_epoch=100, switch_epoch=None):
         # Print stats
         Ntrain = Xtrain.shape[0]
         print('Number of training points: ', Ntrain)
@@ -36,6 +36,7 @@ class Trainer(object):
             Ntest = Xtest.shape[0]
             print('Number of test points:     ', Ntest)
             n_batch_test = int(np.ceil(Ntest/batch_size))
+        switch_epoch = n_epochs/2 if switch_epoch is None else switch_epoch
         
         # Dir to log results
         logdir = datetime.datetime.now().strftime('%Y_%m_%d_%H_%M') if logdir is None else logdir
@@ -55,7 +56,7 @@ class Trainer(object):
             self.model.train()
             train_loss = 0
             # Set switch for model
-            self.model.switch = 1.0 if epoch > n_epochs/2 else 0.0
+            self.model.switch = 1.0 if epoch > switch_epoch else 0.0
             for idx in range(n_batch_train):
                 # Zero gradient
                 self.model.zero_grad()

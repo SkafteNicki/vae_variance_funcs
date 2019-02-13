@@ -21,8 +21,7 @@ def argparser():
     ms = parser.add_argument_group('Model settings')
     ms.add_argument('--model', type=str, default='vae_full', help='model to train')
     ms.add_argument('--beta', type=float, default=1.0, help='weighting of KL term')
-    ms.add_argument('--switch', type=lambda x: (str(x).lower() == 'true'), default=True, help='use switch for variance')
-    ms.add_argument('--anneling', type=lambda x: (str(x).lower() == 'true'), default=True, help='use anneling for kl term')
+    ms.add_argument('--switch_epoch', type=int, default=None, help='when to switch on variance network, default n_epochs/2')
     
     # Training settings
     ts = parser.add_argument_group('Training settings')
@@ -59,10 +58,11 @@ if __name__ == '__main__':
         Xtrain, ytrain = two_moons(args.n, train=True)
         Xtest, ytest = two_moons(int(args.n/2), train=False)
         input_shape = (2,)
-    else:
+    elif args.dataset == 'mnist':
         Xtrain, ytrain = mnist(args.n, train=True)
         Xtest, ytest = mnist(args.n, train=False)
         input_shape = (784,)
+    else:
         raise ValueError('unknown dataset')
     
     # Construct models
@@ -76,4 +76,4 @@ if __name__ == '__main__':
     T.fit(Xtrain=Xtrain, n_epochs=args.n_epochs, batch_size=args.batch_size,
           warmup=args.warmup, beta=args.beta, iw_samples=args.iw_samples,
           logdir=logdir, ytrain=ytrain, Xtest=Xtest, ytest=ytest, 
-          log_epoch=args.log_epoch) 
+          log_epoch=args.log_epoch, switch_epoch=args.switch_epoch) 

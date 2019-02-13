@@ -44,7 +44,10 @@ class VAE_experimental(nn.Module):
         
     def decoder(self, z):
         x_mu = self.dec_mu(z)
-        z_hat = self.enc_mu(x_mu)
+        z_hat = z
+        for _ in range(1):
+            x_hat = self.dec_mu(z_hat)
+            z_hat = self.enc_mu(x_hat)
         diff = (z-z_hat).norm(dim=-1, keepdim=True)
         x_std = self.switch*self.dec_std(diff) + (1-self.switch)*torch.tensor(0.02**2)
         return x_mu, x_std
@@ -56,12 +59,16 @@ class VAE_experimental(nn.Module):
         z = q_dist.rsample([iw_samples])
         
         # Decoder step
-        #x_mu, x_std = self.decoder(z)
         x_mu = self.dec_mu(z)
-        z_hat = self.enc_mu(x_mu)
-        diff = (z-z_hat).norm(dim=2, keepdim=True).mean(dim=0, keepdim=True)
-        x_std = self.switch*self.dec_std(diff) + (1-self.switch)*torch.tensor(0.02**2)
-        
+        if self.switch:
+            z_hat = z
+            for _ in range(1):
+                x_hat = self.dec_mu(z_hat)
+                z_hat = self.enc_mu(x_hat)
+            diff = (z-z_hat).norm(dim=2, keepdim=True).mean(dim=0, keepdim=True)
+            x_std = self.switch*self.dec_std(diff) + (1-self.switch)*torch.tensor(0.02**2)
+        else:
+            x_std = (0.02**2)*torch.ones_like(x_mu)
         p_dist = D.Independent(D.Normal(x_mu, x_std), 1)
         
         # Calculate loss
@@ -70,8 +77,9 @@ class VAE_experimental(nn.Module):
         log_px = p_dist.log_prob(x)
         kl = q_dist.log_prob(z) - prior.log_prob(z)
         elbo = (log_px - beta*kl).mean()
+        iw_elbo = elbo.logsumexp(dim=0) - torch.tensor(float(iw_samples)).log()
         
-        return elbo.mean(), log_px.mean(), kl.mean(), x_mu, x_std, z, z_mu, z_std
+        return iw_elbo.mean(), log_px.mean(), kl.mean(), x_mu, x_std, z, z_mu, z_std
 
 #%%
 class VAE_experimental_moons(VAE_experimental):

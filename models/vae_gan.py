@@ -12,6 +12,15 @@ from torch.nn import functional as F
 from callbacks import callback_default, callback_moons
 from itertools import chain
 
+class ownlinear(nn.Module):
+    def __init__(self,):
+        super(ownlinear, self).__init__()
+        self.a = nn.Parameter(torch.rand(2,))
+        self.b = nn.Parameter(torch.rand(2,))
+        
+    def forward(self, x):
+        return nn.functional.softplus(self.a) * x + nn.functional.softplus(self.b)
+
 #%%
 class VAE_gan_base(nn.Module):
     def __init__(self, lr):
@@ -24,7 +33,7 @@ class VAE_gan_base(nn.Module):
         self.optimizer1 = torch.optim.Adam(chain(self.enc_mu.parameters(),
                                                  self.enc_std.parameters(),
                                                  self.dec_mu.parameters()), lr=self.lr)
-        self.optimizer2 = torch.optim.Adam(chain(self.adverserial.parameters(),
+        self.optimizer2 = torch.optim.SGD(chain(self.adverserial.parameters(),
                                                  self.dec_std.parameters()), lr=self.lr)
         
     def zero_grad(self):
@@ -55,10 +64,10 @@ class VAE_gan_base(nn.Module):
         x_mu, x_std = self.decoder(z)
         
         if self.switch:
-            valid = torch.zeros((x.shape[0], 1), device = x.device) 
-            fake = torch.ones((x.shape[0], 1), device = x.device)
-            labels = torch.cat([valid, fake[::2]], dim=0)
-            x_cat = torch.cat([x, x_mu[0][::2]], dim=0)
+            valid = -0.3*torch.rand((x.shape[0], 1), device = x.device) + 0.3
+            fake = -0.3*torch.rand((x.shape[0], 1), device = x.device)+ 1.0
+            labels = torch.cat([valid, fake], dim=0)
+            x_cat = torch.cat([x, x_mu[0]], dim=0)
             prop = self.adverserial(x_cat)
             advert_loss = F.binary_cross_entropy(prop, labels, reduction='sum')
             x_std = self.dec_std(prop)
@@ -92,14 +101,11 @@ class VAE_gan_moons(VAE_gan_base):
                                     nn.ReLU(), 
                                     nn.Linear(100, 2))
         self.adverserial = nn.Sequential(nn.Linear(2, 100),
-                                         nn.ReLU(),
+                                         nn.LeakyReLU(),
                                          nn.Linear(100, 100),
-                                         nn.ReLU(),
-                                         nn.Linear(100, 100),
-                                         nn.ReLU(),
+                                         nn.LeakyReLU(),
                                          nn.Linear(100, 1),
                                          nn.Sigmoid())
-        self.dec_std = nn.Sequential(nn.Linear(1, 2),
-                                     nn.Softplus())
+        self.dec_std = nn.Sequential(ownlinear())
         
         self.callback = callback_moons()
