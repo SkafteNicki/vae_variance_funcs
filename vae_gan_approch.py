@@ -38,9 +38,9 @@ class VAE_experimental(nn.Module):
                                     nn.ReLU(), 
                                     nn.Linear(20, 2))
         self.adverserial = nn.Sequential(nn.Linear(2, 100),
-                                         nn.ReLU(),
+                                         nn.LeakyReLU(),
                                          nn.Linear(100, 100),
-                                         nn.ReLU(),
+                                         nn.LeakyReLU(),
                                          nn.Linear(100, 1),
                                          nn.Sigmoid())
         self.dec_std = nn.Sequential(nn.Linear(1, 2),
@@ -53,7 +53,7 @@ class VAE_experimental(nn.Module):
         x_mu = self.dec_mu(z)
         
         prop = self.adverserial(x_mu)
-        x_std = 1.0 / (prop+1e-6)
+        x_std = self.dec_std(prop)
         
         return x_mu, switch*x_std+(1-switch)*torch.tensor(0.02**2)
     
@@ -65,20 +65,19 @@ class VAE_experimental(nn.Module):
         
         # Decoder step
         x_mu, x_std = self.decoder(z, switch)
-        
         if switch:
             valid = torch.zeros((x.shape[0], 1), device = x.device)
             fake = torch.ones((x.shape[0], 1), device = x.device)
-            labels = torch.cat([valid, fake[::2]], dim=0)
-            x_cat = torch.cat([x, x_mu[0][::2]], dim=0)
+            labels = torch.cat([valid, fake], dim=0)
+            x_cat = torch.cat([x.repeat(iw_samples, 1, 1), x_mu], dim=1)
             
             prop = self.adverserial(x_cat)
-            advert_loss = F.binary_cross_entropy(prop, labels, reduction='sum')
-            x_std = self.dec_std(prop)#prop#1.0 / (prop+1e-6)
+            advert_loss = F.binary_cross_entropy(prop, labels.repeat(iw_samples, 1, 1), reduction='sum')
+            x_std = self.dec_std(prop[:,:x.shape[0]])
         else:
             advert_loss = 0
         
-        p_dist = D.Independent(D.Normal(x_mu[0], x_std[:x.shape[0]]), 1)
+        p_dist = D.Independent(D.Normal(x_mu, x_std), 1)
         
         # Calculate loss
         prior = D.Independent(D.Normal(torch.zeros_like(z),
@@ -103,11 +102,11 @@ def argparser():
     
     # Training settings
     ts = parser.add_argument_group('Training settings')
-    ts.add_argument('--n_epochs', type=int, default=2000, help='number of epochs of training')
+    ts.add_argument('--n_epochs', type=int, default=3000, help='number of epochs of training')
     ts.add_argument('--batch_size', type=int, default=2000, help='size of the batches')
     ts.add_argument('--warmup', type=int, default=1000, help='number of warmup epochs for kl-terms')
     ts.add_argument('--lr', type=float, default=1e-3, help='learning rate for adam optimizer')
-    ts.add_argument('--iw_samples', type=int, default=1, help='number of importance weighted samples')
+    ts.add_argument('--iw_samples', type=int, default=5, help='number of importance weighted samples')
 
     # Dataset settings
     ds = parser.add_argument_group('Dataset settings')
@@ -245,7 +244,7 @@ if __name__ == '__main__':
                 for coll in cont1.collections: ax[0,2].collections.remove(coll)
                 cont1 = ax[0,2].contourf(grid[:,0].reshape(100, 100),
                                          grid[:,1].reshape(100, 100),
-                                         np.log(z_std.sum(axis=1)).reshape(100, 100), 50)
+                                         z_std.sum(axis=1).reshape(100, 100), 50)
                 
                 # Decoder variance
                 grid = np.stack([array.flatten() for array in np.meshgrid(
@@ -263,7 +262,7 @@ if __name__ == '__main__':
                 for coll in cont2.collections: ax[1,2].collections.remove(coll)
                 cont2 = ax[1,2].contourf(grid[:,0].reshape(100, 100),
                                          grid[:,1].reshape(100, 100),
-                                         np.log(x_std.sum(axis=1)).reshape(100, 100), 50)
+                                         x_std.sum(axis=1).reshape(100, 100), 50)
                 
                 if hasattr(model, 'C'): # plot clusters
                     scat5.set_data(model.C[:,0].detach().cpu(), model.C[:,1].detach().cpu())
@@ -275,6 +274,9 @@ if __name__ == '__main__':
                 # Draw
                 plt.draw()
                 plt.pause(0.01)
-                
+    
+    for p in model.dec_std.parameters():
+        print(p)
+    
     plt.savefig(str(args.model) + '.pdf')
     plt.show(block=True)
