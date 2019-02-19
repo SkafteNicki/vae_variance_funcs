@@ -34,7 +34,7 @@ def argparser():
     
     # Dataset settings
     ds = parser.add_argument_group('Dataset settings')
-    ds.add_argument('--n', type=int, default=1000, help='number of points in each class')
+    ds.add_argument('--n', type=int, default=10000, help='number of points in each class')
     ds.add_argument('--logdir', type=str, default='', help='where to store results')
     ds.add_argument('--dataset', type=str, default='moons', help='dataset to use')
     

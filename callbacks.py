@@ -9,6 +9,7 @@ Created on Tue Feb  5 11:12:45 2019
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from torchvision.utils import make_grid
 
 #%%
 class callback_default(object):
@@ -155,11 +156,52 @@ class callback_moons_ed(callback_moons):
 #%%
 class callback_mnist(callback_default):
     def __init__(self):
-        pass
+        self.fig1 = plt.figure()
+        self.fig2 = plt.figure()
     
     def update(self, X, model, device, labels=None):
-        pass
-    
+        # Calculate some reconstructions and samples
+        n = 10
+        x = X[:n].to(device)
+        _, _, _, x_mu, _, _, _, _ = model(x, 1.0, 1)
+        self.img_recon = make_grid(torch.cat([x.reshape(-1, 1, 28, 28), 
+                                              x_mu[0].reshape(-1, 1, 28, 28)]).cpu(), nrow=n)
+        self.samples = make_grid(model.sample(n*n).cpu().reshape(-1, 1, 28, 28),
+                                 nrow=n)
+        
+        # Extract latent coordinates
+        N = X.shape[0]
+        n_batch = int(np.ceil(N/100))
+        latent = np.zeros((N, 2))
+        for i in range(n_batch):
+            x = X[i*100:(i+1)*100].to(device)
+            z_mu, _ = model.encoder(x)
+            latent[i*100:(i+1)*100] = z_mu.cpu().numpy()
+        
+        # Clear plots
+        self.fig1.clear(); self.ax1 = self.fig1.add_subplot(111)
+        self.fig2.clear(); self.ax2 = self.fig2.add_subplot(111)
+        
+        # Forward grid to calculate meshgrid and std's
+        grid = np.stack([array.flatten() for array in np.meshgrid(
+                            np.linspace(-5, 5, 100),
+                            np.linspace(-5, 5, 100))]).T
+        x_mu, x_std = model.decoder(torch.tensor(grid).to(torch.float32).to(device))
+        self.mesh = make_grid(x_mu[::4].cpu().reshape(-1, 1, 28, 28), nrow=50)
+        x_std = x_std.cpu().numpy()
+        
+        # Make figures
+        scat = self.ax1.scatter(latent[:,0], latent[:,1], c=labels.numpy())
+        plt.colorbar(scat, ax=self.ax1)
+        
+        cont = self.ax2.contourf(grid[:,0].reshape(100, 100),
+                                 grid[:,1].reshape(100, 100),
+                                 x_std.sum(axis=1).reshape(100, 100), 50) 
+        plt.colorbar(cont, ax=self.ax2)
+        
     def write(self, writer, epoch, label='cb'):
-        pass
-    
+        writer.add_image(label + '/recon', self.img_recon, epoch)
+        writer.add_image(label + '/samples', self.samples, epoch)
+        writer.add_image(label + '/meshgrid', self.mesh, epoch)
+        writer.add_figure(label + '/latent', self.fig1, epoch)
+        writer.add_figure(label + '/decoder_std', self.fig2, epoch)

@@ -9,15 +9,15 @@ Created on Wed Jan 30 10:59:10 2019
 import torch
 from torch import nn
 from torch import distributions as D
-from callbacks import callback_default, callback_moons_ed
+from callbacks import callback_default, callback_moons_ed, callback_mnist
 
 #%%
 
 class ownlinear(nn.Module):
-    def __init__(self,):
+    def __init__(self, size):
         super(ownlinear, self).__init__()
-        self.a = nn.Parameter(torch.rand(2,))
-        self.b = nn.Parameter(torch.rand(2,))
+        self.a = nn.Parameter(torch.rand(size,))
+        self.b = nn.Parameter(torch.rand(size,))
         
     def forward(self, x):
         return nn.functional.softplus(self.a) * x + nn.functional.softplus(self.b)
@@ -52,10 +52,17 @@ class VAE_experimental(nn.Module):
         x_std = self.switch*self.dec_std(diff) + (1-self.switch)*torch.tensor(0.02**2)
         return x_mu, x_std
     
-    def forward(self, x, beta=1.0, iw_samples=1):
+    def sample(self, n):
+        device = next(self.parameters()).device
+        with torch.no_grad():
+            z = torch.randn(n, self.latent_dim, device=device)
+            x_mu, _ = self.decoder(z)
+            return x_mu
+    
+    def forward(self, x, beta=1.0, iw_samples=1, epsilon=1e-5):
         # Encoder step
         z_mu, z_std = self.encoder(x)
-        q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
+        q_dist = D.Independent(D.Normal(z_mu, z_std+epsilon), 1)
         z = q_dist.rsample([iw_samples])
         
         # Decoder step
@@ -69,7 +76,7 @@ class VAE_experimental(nn.Module):
             x_std = self.switch*self.dec_std(diff) + (1-self.switch)*torch.tensor(0.02**2)
         else:
             x_std = (0.02**2)*torch.ones_like(x_mu)
-        p_dist = D.Independent(D.Normal(x_mu, x_std), 1)
+        p_dist = D.Independent(D.Normal(x_mu, x_std+epsilon), 1)
         
         # Calculate loss
         prior = D.Independent(D.Normal(torch.zeros_like(z),
@@ -95,7 +102,33 @@ class VAE_experimental_moons(VAE_experimental):
         self.dec_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
                                     nn.Linear(100, 2))
-        self.dec_std = nn.Sequential(ownlinear())
+        self.dec_std = nn.Sequential(ownlinear(2))
         
         self.callback = callback_moons_ed()
+        self.latent_dim = 2
+        
+#%%
+class VAE_experimental_mnist(VAE_experimental):
+    def __init__(self, lr):
+        super(VAE_experimental_mnist, self).__init__(lr=lr)
+        self.enc_mu = nn.Sequential(nn.Linear(784, 256),
+                                    nn.LeakyReLU(),
+                                    nn.Linear(256, 128),
+                                    nn.LeakyReLU(),
+                                    nn.Linear(128, 2))
+        self.enc_std = nn.Sequential(nn.Linear(784, 256),
+                                     nn.LeakyReLU(),
+                                     nn.Linear(256, 128),
+                                     nn.LeakyReLU(),
+                                     nn.Linear(128, 2),
+                                     nn.Softplus())
+        self.dec_mu = nn.Sequential(nn.Linear(2, 128),
+                                    nn.LeakyReLU(),
+                                    nn.Linear(128, 256),
+                                    nn.LeakyReLU(),
+                                    nn.Linear(256, 784),
+                                    nn.ReLU())
+        self.dec_std = nn.Sequential(ownlinear(784))
+        self.callback = callback_mnist()
+        self.latent_dim = 2
         

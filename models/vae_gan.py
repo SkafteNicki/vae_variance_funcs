@@ -9,7 +9,7 @@ import torch
 from torch import nn
 from torch import distributions as D 
 from torch.nn import functional as F
-from callbacks import callback_default, callback_moons
+from callbacks import callback_default, callback_moons, callback_mnist
 from itertools import chain
 
 #%%
@@ -24,7 +24,7 @@ class VAE_gan_base(nn.Module):
         self.optimizer1 = torch.optim.Adam(chain(self.enc_mu.parameters(),
                                                  self.enc_std.parameters(),
                                                  self.dec_mu.parameters()), lr=self.lr)
-        self.optimizer2 = torch.optim.SGD(chain(self.adverserial.parameters(),
+        self.optimizer2 = torch.optim.Adam(chain(self.adverserial.parameters(),
                                                  self.dec_std.parameters()), lr=self.lr)
         
     def zero_grad(self):
@@ -45,10 +45,17 @@ class VAE_gan_base(nn.Module):
         prop = self.adverserial(x_mu)
         return x_mu, self.switch*self.dec_std(prop)+(1-self.switch)*torch.tensor(0.02**2)
     
-    def forward(self, x, beta=1.0, iw_samples=1):
+    def sample(self, n):
+        device = next(self.parameters()).device
+        with torch.no_grad():
+            z = torch.randn(n, self.latent_dim, device=device)
+            x_mu, _ = self.decoder(z)
+            return x_mu
+    
+    def forward(self, x, beta=1.0, iw_samples=1, epsilon=1e-5):
         # Encoder step
         z_mu, z_std = self.encoder(x)
-        q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
+        q_dist = D.Independent(D.Normal(z_mu, z_std+epsilon), 1)
         z = q_dist.rsample([iw_samples])
         
         # Decoder step
@@ -58,13 +65,13 @@ class VAE_gan_base(nn.Module):
             fake = torch.ones((x.shape[0], 1), device = x.device)
             labels = torch.cat([valid, fake], dim=0)
             x_cat = torch.cat([x.repeat(iw_samples, 1, 1), x_mu], dim=1)
+            
             prop = self.adverserial(x_cat)
-            advert_loss = F.binary_cross_entropy(prop, labels.repeat(iw_samples, 1, 1), 
-                                                 reduction='sum')
+            advert_loss = F.binary_cross_entropy(prop, labels.repeat(iw_samples, 1, 1), reduction='sum')
             x_std = self.dec_std(prop[:,:x.shape[0]])
         else:
             advert_loss = 0
-        p_dist = D.Independent(D.Normal(x_mu, x_std), 1)
+        p_dist = D.Independent(D.Normal(x_mu, x_std+epsilon), 1)
         
         # Calculate loss
         prior = D.Independent(D.Normal(torch.zeros_like(z),
@@ -80,16 +87,16 @@ class VAE_gan_base(nn.Module):
 class VAE_gan_moons(VAE_gan_base):
     def __init__(self, lr):
         super(VAE_gan_moons, self).__init__(lr=lr)
-        self.enc_mu = nn.Sequential(nn.Linear(2, 20), 
+        self.enc_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
-                                    nn.Linear(20, 2))
-        self.enc_std = nn.Sequential(nn.Linear(2, 20), 
+                                    nn.Linear(100, 2))
+        self.enc_std = nn.Sequential(nn.Linear(2, 100), 
                                      nn.ReLU(), 
-                                     nn.Linear(20, 2), 
+                                     nn.Linear(100, 2), 
                                      nn.Softplus())
-        self.dec_mu = nn.Sequential(nn.Linear(2, 20), 
+        self.dec_mu = nn.Sequential(nn.Linear(2, 100), 
                                     nn.ReLU(), 
-                                    nn.Linear(20, 2))
+                                    nn.Linear(100, 2))
         self.adverserial = nn.Sequential(nn.Linear(2, 100),
                                          nn.LeakyReLU(),
                                          nn.Linear(100, 100),
@@ -100,3 +107,40 @@ class VAE_gan_moons(VAE_gan_base):
                                      nn.Softplus())
         
         self.callback = callback_moons()
+        self.latent_dim = 2
+        
+#%%
+class VAE_gan_mnist(VAE_gan_base):
+    def __init__(self, lr):
+        super(VAE_gan_mnist, self).__init__(lr=lr)
+        self.enc_mu = nn.Sequential(nn.Linear(784, 256),
+                                    nn.LeakyReLU(),
+                                    nn.Linear(256, 128),
+                                    nn.LeakyReLU(),
+                                    nn.Linear(128, 2))
+        self.enc_std = nn.Sequential(nn.Linear(784, 256),
+                                     nn.LeakyReLU(),
+                                     nn.Linear(256, 128),
+                                     nn.LeakyReLU(),
+                                     nn.Linear(128, 2),
+                                     nn.Softplus())
+        self.dec_mu = nn.Sequential(nn.Linear(2, 128),
+                                    nn.LeakyReLU(),
+                                    nn.Linear(128, 256),
+                                    nn.LeakyReLU(),
+                                    nn.Linear(256, 784),
+                                    nn.ReLU())
+        self.adverserial = nn.Sequential(nn.Linear(784, 512),
+                                         nn.LeakyReLU(),
+                                         nn.Linear(512, 256),
+                                         nn.LeakyReLU(),
+                                         nn.Linear(256, 128),
+                                         nn.LeakyReLU(),
+                                         nn.Linear(128, 1),
+                                         nn.Sigmoid())
+        self.dec_std = nn.Sequential(nn.ReLU())
+                #nn.Linear(1, 1),
+                                     #nn.Softplus())
+                                     
+        self.callback = callback_mnist()
+        self.latent_dim = 2

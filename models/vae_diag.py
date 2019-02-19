@@ -37,15 +37,22 @@ class VAE_diag_base(nn.Module):
         x_std = self.switch*x_std + (1-self.switch)*torch.tensor(0.02**2)
         return x_mu, x_std
     
-    def forward(self, x, beta=1.0, iw_samples=1):
+    def sample(self, n):
+        device = next(self.parameters()).device
+        with torch.no_grad():
+            z = torch.randn(n, self.latent_dim, device=device)
+            x_mu, _ = self.decoder(z)
+            return x_mu
+    
+    def forward(self, x, beta=1.0, iw_samples=1, epsilon=1e-5):
         # Encoder step
         z_mu, z_std = self.encoder(x)
-        q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
+        q_dist = D.Independent(D.Normal(z_mu, z_std+epsilon), 1)
         z = q_dist.rsample([iw_samples])
         
         # Decoder step
         x_mu, x_std = self.decoder(z)
-        p_dist = D.Independent(D.Normal(x_mu, x_std), 1)
+        p_dist = D.Independent(D.Normal(x_mu, x_std+epsilon), 1)
         
         # Calculate loss
         prior = D.Independent(D.Normal(torch.zeros_like(z),
@@ -76,3 +83,4 @@ class VAE_diag_moons(VAE_diag_base):
                                      nn.Linear(100, 1),
                                      nn.Softplus())
         self.callback = callback_moons()
+        self.latent_dim = 2
