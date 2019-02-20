@@ -126,8 +126,7 @@ class VAE_experimental_mnist(VAE_experimental):
                                     nn.LeakyReLU(),
                                     nn.Linear(128, 256),
                                     nn.LeakyReLU(),
-                                    nn.Linear(256, 784),
-                                    nn.ReLU())
+                                    nn.Linear(256, 784))
         self.dec_std = nn.Sequential(ownlinear(784))
         self.callback = callback_mnist()
         self.latent_dim = 2

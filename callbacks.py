@@ -158,6 +158,9 @@ class callback_mnist(callback_default):
     def __init__(self):
         self.fig1 = plt.figure()
         self.fig2 = plt.figure()
+        self.fig3 = plt.figure()
+        self.fig4 = plt.figure()
+        self.fig5 = plt.figure()
     
     def update(self, X, model, device, labels=None):
         # Calculate some reconstructions and samples
@@ -165,9 +168,9 @@ class callback_mnist(callback_default):
         x = X[:n].to(device)
         _, _, _, x_mu, _, _, _, _ = model(x, 1.0, 1)
         self.img_recon = make_grid(torch.cat([x.reshape(-1, 1, 28, 28), 
-                                              x_mu[0].reshape(-1, 1, 28, 28)]).cpu(), nrow=n)
+            x_mu[0].reshape(-1, 1, 28, 28)]).cpu(), nrow=n).clamp(0,1)
         self.samples = make_grid(model.sample(n*n).cpu().reshape(-1, 1, 28, 28),
-                                 nrow=n)
+            nrow=n).clamp(0,1)
         
         # Extract latent coordinates
         N = X.shape[0]
@@ -178,17 +181,35 @@ class callback_mnist(callback_default):
             z_mu, _ = model.encoder(x)
             latent[i*100:(i+1)*100] = z_mu.cpu().numpy()
         
-        # Clear plots
-        self.fig1.clear(); self.ax1 = self.fig1.add_subplot(111)
-        self.fig2.clear(); self.ax2 = self.fig2.add_subplot(111)
+        # Make diff and quiver plots
+        z = np.stack([array.flatten() for array in np.meshgrid(
+                      np.linspace(-5, 5, 100),
+                      np.linspace(-5, 5, 100))]).T
+        z = torch.tensor(z).to(torch.float32).to(device)
+        x_mu, _ = model.decoder(z)
+        z_hat, _ = model.encoder(x_mu)
+        diff1 = (z-z_hat).norm(dim=-1, keepdim=True).cpu().numpy()
+        vec = (z-z_hat).cpu().numpy() # vector field for quiver
+        for _ in range(9):
+            x_mu, _ = model.decoder(z_hat)
+            z_hat, _ = model.encoder(x_mu)
+        diff10 = (z-z_hat).norm(dim=-1, keepdim=True).cpu().numpy()
+        z = z.cpu().numpy()
         
         # Forward grid to calculate meshgrid and std's
         grid = np.stack([array.flatten() for array in np.meshgrid(
                             np.linspace(-5, 5, 100),
                             np.linspace(-5, 5, 100))]).T
         x_mu, x_std = model.decoder(torch.tensor(grid).to(torch.float32).to(device))
-        self.mesh = make_grid(x_mu[::4].cpu().reshape(-1, 1, 28, 28), nrow=50)
+        self.mesh = make_grid(x_mu[::4].cpu().reshape(-1, 1, 28, 28), nrow=50).clamp(0,1)
         x_std = x_std.cpu().numpy()
+        
+        # Clear plots
+        self.fig1.clear(); self.ax1 = self.fig1.add_subplot(111)
+        self.fig2.clear(); self.ax2 = self.fig2.add_subplot(111)
+        self.fig3.clear(); self.ax3 = self.fig3.add_subplot(111)
+        self.fig4.clear(); self.ax4 = self.fig4.add_subplot(111)
+        self.fig5.clear(); self.ax5 = self.fig5.add_subplot(111)
         
         # Make figures
         scat = self.ax1.scatter(latent[:,0], latent[:,1], c=labels.numpy())
@@ -199,9 +220,22 @@ class callback_mnist(callback_default):
                                  x_std.sum(axis=1).reshape(100, 100), 50) 
         plt.colorbar(cont, ax=self.ax2)
         
+        cont = self.ax3.contourf(z[:,0].reshape(100, 100), z[:,1].reshape(100,100),
+                                 diff1.reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax3)
+        cont = self.ax4.contourf(z[:,0].reshape(100, 100), z[:,1].reshape(100,100),
+                                 diff10.reshape(100, 100), 50)
+        plt.colorbar(cont, ax=self.ax4)
+        self.ax5.quiver(z[::4,0].reshape(50, 50), z[::4,1].reshape(50, 50),
+                        vec[::4,0].reshape(50, 50), vec[::4,1].reshape(50, 50))
+        
+        
     def write(self, writer, epoch, label='cb'):
         writer.add_image(label + '/recon', self.img_recon, epoch)
         writer.add_image(label + '/samples', self.samples, epoch)
         writer.add_image(label + '/meshgrid', self.mesh, epoch)
         writer.add_figure(label + '/latent', self.fig1, epoch)
         writer.add_figure(label + '/decoder_std', self.fig2, epoch)
+        writer.add_figure(label + '/diff1', self.fig3, epoch)
+        writer.add_figure(label + '/diff10', self.fig4, epoch)
+        writer.add_figure(label + '/quiver', self.fig5, epoch)

@@ -42,7 +42,7 @@ class VAE_gan_base(nn.Module):
     
     def decoder(self, z):
         x_mu = self.dec_mu(z)
-        prop = self.adverserial(x_mu)
+        prop = self.adverserial(z)
         return x_mu, self.switch*self.dec_std(prop)+(1-self.switch)*torch.tensor(0.02**2)
     
     def sample(self, n):
@@ -64,9 +64,9 @@ class VAE_gan_base(nn.Module):
             valid = torch.zeros((x.shape[0], 1), device = x.device)
             fake = torch.ones((x.shape[0], 1), device = x.device)
             labels = torch.cat([valid, fake], dim=0)
-            x_cat = torch.cat([x.repeat(iw_samples, 1, 1), x_mu], dim=1)
+            z_cat = torch.cat([z_mu.repeat(iw_samples, 1, 1), z], dim=1)
             
-            prop = self.adverserial(x_cat)
+            prop = self.adverserial(z_cat)
             advert_loss = F.binary_cross_entropy(prop, labels.repeat(iw_samples, 1, 1), reduction='sum')
             x_std = self.dec_std(prop[:,:x.shape[0]])
         else:
